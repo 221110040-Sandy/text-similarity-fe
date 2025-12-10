@@ -6,6 +6,8 @@ from io import StringIO
 import requests
 import json
 import time
+from sklearn.model_selection import train_test_split
+
 
 sys.path.append(str(Path(__file__).parent.parent))
 from utils.auth import initialize_auth_state, require_auth, logout
@@ -27,6 +29,25 @@ def read_csv_strip_quotes(uploaded_file):
     fixed_text = "\n".join(fixed)
     return pd.read_csv(StringIO(fixed_text))
 
+def safe_read_csv(uploaded_file, required_cols):
+    if uploaded_file is None:
+        return None, False, None
+    df = None
+    try:
+        df = pd.read_csv(uploaded_file)
+        if df.shape[1] == 1:
+            raise ValueError("single column")
+    except Exception:
+        try:
+            df = read_csv_strip_quotes(uploaded_file)
+        except Exception:
+            return None, False, "Tidak dapat membaca CSV (format/encoding tidak dikenali)."
+    cols = list(df.columns)
+    missing = [c for c in required_cols if c not in cols]
+    if missing:
+        return df, False, f"Kolom wajib hilang → {', '.join(missing)}"
+    return df, True, None
+
 st.set_page_config(page_title="Admin Panel", layout="wide", initial_sidebar_state="collapsed")
 
 initialize_auth_state()
@@ -36,6 +57,7 @@ st.markdown("""
   .admin-header { background: linear-gradient(135deg,#667eea 0%,#764ba2 100%); padding:2rem; border-radius:15px; color:#fff; text-align:center; margin-bottom:2rem; box-shadow:0 10px 30px rgba(102,126,234,0.3);} 
   #MainMenu, header, footer { visibility:hidden; }
   [data-testid="stSidebar"], [data-testid="collapsedControl"] { display:none; }
+  .summary-card { padding: 12px 16px; border-radius:8px; background:rgba(255,255,255,0.02); }
 </style>
 """, unsafe_allow_html=True)
 
@@ -64,6 +86,7 @@ df_train = df_val = df_test = None
 col_sent1 = "sentence1"
 col_sent2 = "sentence2"
 col_label = "label"
+required_cols = [col_sent1, col_sent2, col_label]
 
 st.info("CSV harus memiliki header: 'sentence1', 'sentence2', 'label'")
 
@@ -71,28 +94,18 @@ with col_train:
     st.subheader("Train CSV (required)")
     train_file = st.file_uploader("Upload train CSV", type=['csv'], key='train_file')
     train_valid = False
+    train_err = None
     if train_file:
-        try:
-            df_train = pd.read_csv(train_file)
-            if df_train.shape[1] == 1:
-                raise ValueError("single column, fallback")
-        except Exception:
-            try:
-                df_train = read_csv_strip_quotes(train_file)
-            except Exception as e:
-                st.error(f"Error membaca Train CSV: {e}")
-                df_train = None
-        if df_train is not None:
-            st.dataframe(df_train.head(5), use_container_width=True)
+        df_train, train_valid, train_err = safe_read_csv(train_file, required_cols)
+        if train_err:
+            st.error(train_err)
+        if df_train is not None and train_valid:
             st.metric("Rows", len(df_train))
             st.metric("Columns", len(df_train.columns))
-            cols = list(df_train.columns)
-            missing = [c for c in [col_sent1, col_sent2, col_label] if c not in cols]
-            if missing:
-                st.error(f"Kolom wajib hilang → {', '.join(missing)}")
-            else:
-                st.success("Dokumen valid — semua kolom ditemukan")
-                train_valid = True
+            st.success("Dokumen valid — semua kolom ditemukan")
+            # st.dataframe(df_train[[col_sent1, col_sent2, col_label]].head(5), use_container_width=True)
+        elif df_train is not None and not train_valid:
+            st.info("header tidak sesuai.")
     else:
         st.warning("Train CSV wajib diupload")
 
@@ -100,57 +113,83 @@ with col_val:
     st.subheader("Validation CSV (optional)")
     val_file = st.file_uploader("Upload validation CSV", type=['csv'], key='val_file')
     val_valid = False
+    val_err = None
     if val_file:
-        try:
-            df_val = pd.read_csv(val_file)
-            if df_val.shape[1] == 1:
-                raise ValueError("single column, fallback")
-        except Exception:
-            try:
-                df_val = read_csv_strip_quotes(val_file)
-            except Exception as e:
-                st.error(f"Error membaca Validation CSV: {e}")
-                df_val = None
-        if df_val is not None:
-            st.dataframe(df_val.head(5), use_container_width=True)
+        df_val, val_valid, val_err = safe_read_csv(val_file, required_cols)
+        if val_err:
+            st.error(val_err)
+        if df_val is not None and val_valid:
             st.metric("Rows", len(df_val))
             st.metric("Columns", len(df_val.columns))
-            cols = list(df_val.columns)
-            missing = [c for c in [col_sent1, col_sent2, col_label] if c not in cols]
-            if missing:
-                st.error(f"Kolom wajib hilang → {', '.join(missing)}")
-            else:
-                st.success("Dokumen valid — semua kolom ditemukan")
-                val_valid = True
+            st.success("Dokumen valid — semua kolom ditemukan")
+            # st.dataframe(df_val[[col_sent1, col_sent2, col_label]].head(5), use_container_width=True)
+        elif df_val is not None and not val_valid:
+            st.info("header tidak sesuai.")
 
 with col_test:
     st.subheader("Test CSV (required)")
     test_file = st.file_uploader("Upload test CSV", type=['csv'], key='test_file')
     test_valid = False
+    test_err = None
     if test_file:
-        try:
-            df_test = pd.read_csv(test_file)
-            if df_test.shape[1] == 1:
-                raise ValueError("single column, fallback")
-        except Exception:
-            try:
-                df_test = read_csv_strip_quotes(test_file)
-            except Exception as e:
-                st.error(f"Error membaca Test CSV: {e}")
-                df_test = None
-        if df_test is not None:
-            st.dataframe(df_test.head(5), use_container_width=True)
+        df_test, test_valid, test_err = safe_read_csv(test_file, required_cols)
+        if test_err:
+            st.error(test_err)
+        if df_test is not None and test_valid:
             st.metric("Rows", len(df_test))
             st.metric("Columns", len(df_test.columns))
-            cols = list(df_test.columns)
-            missing = [c for c in [col_sent1, col_sent2, col_label] if c not in cols]
-            if missing:
-                st.error(f"Kolom wajib hilang → {', '.join(missing)}")
-            else:
-                st.success("Dokumen valid — semua kolom ditemukan")
-                test_valid = True
+            st.success("Dokumen valid — semua kolom ditemukan")
+            # st.dataframe(df_test[[col_sent1, col_sent2, col_label]].head(5), use_container_width=True)
+        elif df_test is not None and not test_valid:
+            st.info("header tidak sesuai.")
     else:
         st.warning("Test CSV wajib diupload")
+
+st.markdown("---")
+
+def summarize_df(df):
+    if df is None:
+        return None
+    total = len(df)
+    s1_nonnull = int(df[col_sent1].notna().sum())
+    s2_nonnull = int(df[col_sent2].notna().sum())
+    label_nonnull = int(df[col_label].notna().sum()) if col_label in df.columns else 0
+    vc = df[col_label].value_counts(dropna=False) if col_label in df.columns else pd.Series(dtype=int)
+    label_0 = int(vc.get(0, 0))
+    label_1 = int(vc.get(1, 0))
+    pct_0 = round(label_0 / total * 100, 2) if total > 0 else 0.0
+    pct_1 = round(label_1 / total * 100, 2) if total > 0 else 0.0
+    combined = (df[col_sent1].fillna("").astype(str) + " " + df[col_sent2].fillna("").astype(str)).str.len()
+    qs = combined.quantile([0.25, 0.5, 0.75, 0.95, 1.0]).to_dict()
+    qtable = {25: int(qs.get(0.25, 0)), 50: int(qs.get(0.5, 0)), 75: int(qs.get(0.75, 0)), 95: int(qs.get(0.95, 0)), 100: int(qs.get(1.0, 0))}
+    max_len = qtable[95]
+    return {"total": total, "s1_nonnull": s1_nonnull, "s2_nonnull": s2_nonnull, "label_nonnull": label_nonnull, "label_0": label_0, "label_1": label_1, "pct_0": pct_0, "pct_1": pct_1, "qtable": qtable, "max_len": max_len}
+
+train_summary = summarize_df(df_train) if (df_train is not None and train_valid) else None
+val_summary = summarize_df(df_val) if (df_val is not None and val_valid) else None
+test_summary = summarize_df(df_test) if (df_test is not None and test_valid) else None
+
+st.markdown("### Dataset summary")
+c1, c2, c3 = st.columns(3)
+for col, name, summary, df in zip((c1, c2, c3), ("Train", "Validation", "Test"), (train_summary, val_summary, test_summary), (df_train, df_val, df_test)):
+    with col:
+        st.markdown(f"#### {name}")
+        if summary is None:
+            st.write("N/A")
+            continue
+        st.markdown("<div class='summary-card'>", unsafe_allow_html=True)
+        st.metric("Rows", summary["total"])
+        st.write(f"Sentence1 non-null: {summary['s1_nonnull']}")
+        st.write(f"Sentence2 non-null: {summary['s2_nonnull']}")
+        st.write(f"Label non-null: {summary['label_nonnull']}")
+        st.write(f"Label distribution: 0 = {summary['label_0']} ({summary['pct_0']}%), 1 = {summary['label_1']} ({summary['pct_1']}%)")
+        qt = summary["qtable"]
+        qdf = pd.DataFrame({"percentile": ["P25","P50","P75","P95","P100"], "chars": [qt[25], qt[50], qt[75], qt[95], qt[100]]})
+        st.table(qdf)
+        st.write(f"Max len (use P95): {summary['max_len']}")
+        st.markdown("</div>", unsafe_allow_html=True)
+        st.write("Sample rows:")
+        st.dataframe(df[[col_sent1, col_sent2, col_label]].head(5), use_container_width=True)
 
 st.markdown("---")
 
@@ -183,15 +222,12 @@ with right:
         ca, cb = st.columns(2)
         i1 = r*2
         i2 = i1 + 1
-        ca.markdown(f"**Attention value {i1+1}**")
-        ca.write(attention_values[i1])
+        ca.write(f"Attention value {i1+1}: {attention_values[i1]}")
         if i2 < len(attention_values):
-            cb.markdown(f"**Attention value {i2+1}**")
-            cb.write(attention_values[i2])
+            cb.write(f"Attention value {i2+1}: {attention_values[i2]}")
 
 st.markdown("---")
 
-st.markdown("### Optimizer / regularization")
 opt_col1, opt_col2 = st.columns(2)
 with opt_col1:
     lr_min = st.number_input("Learning rate (min)", value=1e-5, format="%.6g", key="lr_min")
@@ -224,18 +260,14 @@ st.markdown("---")
 st.markdown("### Setelah Hyperband")
 full_training = st.radio("Lakukan full training setelah Hyperband?", options=["Ya","Tidak"], index=0)
 
-any_uploaded = any([train_file, test_file])
-all_uploaded_valid = True
-if not train_file or not train_valid:
-    all_uploaded_valid = False
-if not test_file or not test_valid:
-    all_uploaded_valid = False
+any_uploaded = all([train_file is not None, test_file is not None])
+all_uploaded_valid = all([train_valid, test_valid])
 
 disabled = False
 reasons = []
 if not any_uploaded:
     disabled = True
-    reasons.append("Belum ada CSV train/test yang diupload")
+    reasons.append("Train dan Test wajib diupload")
 if not all_uploaded_valid:
     disabled = True
     reasons.append("Train dan Test wajib valid (cek pesan di tiap kolom)")
@@ -244,7 +276,6 @@ if disabled:
     st.info("Tidak dapat memulai proses: " + "; ".join(reasons))
 
 def prepare_splits(df_train, df_val, df_test, label_col, seed=42):
-    from sklearn.model_selection import train_test_split
     train_df = df_train.copy() if df_train is not None else None
     val_df = df_val.copy() if df_val is not None else None
     test_df = df_test.copy() if df_test is not None else None
@@ -264,47 +295,59 @@ def sample_for_hyperband(df, pct, seed=42):
     n = max(1, int(len(df) * pct / 100))
     return df.sample(n=n, random_state=seed).reset_index(drop=True)
 
-API_URL = "https://localhost:8000/find-hyperparameter"
+API_URL = "https://your.api.server/find-hyperparameter"
 API_TIMEOUT = 60
 
 if st.button("Mulai Training", type="primary", disabled=disabled):
-    with st.spinner("Memproses..."):
-        time.sleep(0.5)
-    try:
-        train_df_proc, val_df_proc, test_df_proc = prepare_splits(df_train, df_val, df_test, col_label)
-        payload = {
-            "batch_size": int(batch_size),
-            "bilstm_values": bilstm_values,
-            "attention_values": attention_values,
-            "lr_range": [float(lr_min), float(lr_max)],
-            "dropout_range": [float(drop_min), float(drop_max)],
-            "weight_decay_range": [float(wd_min), float(wd_max)],
-            "max_epochs": int(max_epochs),
-            "max_trials": int(max_trials),
-            "sampling_pct": {"train": int(samp_train_pct), "val": int(samp_val_pct), "test": int(samp_test_pct)},
-            "full_training": full_training == "Ya"
-        }
-        st.write("Summary konfigurasi:")
-        st.json(payload)
-        files = {}
-        if train_file:
-            files["train"] = (train_file.name, train_file.getvalue(), "text/csv")
-        if val_file:
-            files["val"] = (val_file.name, val_file.getvalue(), "text/csv")
-        if test_file:
-            files["test"] = (test_file.name, test_file.getvalue(), "text/csv")
-        data = {"payload": json.dumps(payload)}
-        try:
-            r = requests.post(API_URL, data=data, files=files, timeout=API_TIMEOUT)
-            r.raise_for_status()
-            try:
-                resp = r.json()
-                st.success("Request sukses")
-                st.json(resp)
-            except Exception:
-                st.success("Request sukses (non-JSON response)")
-                st.text(r.text[:1000])
-        except requests.RequestException as e:
-            st.error(f"Error saat memanggil API: {e}")
-    except Exception as e:
-        st.error(f"Terjadi kesalahan saat persiapan: {e}")
+    train_df_proc, val_df_proc, test_df_proc = prepare_splits(df_train, df_val, df_test, col_label)
+    cfg = {
+        "batch_size": int(batch_size),
+        "bilstm_values": bilstm_values,
+        "attention_values": attention_values,
+        "lr_range": [float(lr_min), float(lr_max)],
+        "dropout_range": [float(drop_min), float(drop_max)],
+        "weight_decay_range": [float(wd_min), float(wd_max)],
+        "max_epochs": int(max_epochs),
+        "max_trials": int(max_trials),
+        "sampling_pct": {"train": int(samp_train_pct), "val": int(samp_val_pct), "test": int(samp_test_pct)},
+        "full_training": full_training == "Ya"
+    }
+    with st.dialog("Konfirmasi konfigurasi & dataset"):
+        st.subheader("Konfigurasi")
+        st.json(cfg)
+        st.subheader("Train summary")
+        if train_summary:
+            st.write(f"rows: {train_summary['total']}")
+            st.write(f"label 0: {train_summary['label_0']} ({train_summary['pct_0']}%)")
+            st.write(f"label 1: {train_summary['label_1']} ({train_summary['pct_1']}%)")
+            st.write("percentiles (P25,P50,P75,P95,P100):", train_summary["qtable"])
+            st.write("Max len (use P95):", train_summary["max_len"])
+            st.write("Sample rows (train):")
+            st.dataframe(df_train[[col_sent1, col_sent2, col_label]].head(5), use_container_width=True)
+        else:
+            st.write("N/A")
+        col_ok, col_cancel = st.columns(2)
+        if col_cancel.button("Batal"):
+            st.info("Proses dibatalkan")
+        if col_ok.button("Konfirmasi & Jalankan"):
+            with st.spinner("Mengirim request ke API..."):
+                files = {}
+                if train_file:
+                    files["train"] = (train_file.name, train_file.getvalue(), "text/csv")
+                if val_file:
+                    files["val"] = (val_file.name, val_file.getvalue(), "text/csv")
+                if test_file:
+                    files["test"] = (test_file.name, test_file.getvalue(), "text/csv")
+                data = {"payload": json.dumps(cfg)}
+                try:
+                    r = requests.post(API_URL, data=data, files=files, timeout=API_TIMEOUT)
+                    r.raise_for_status()
+                    try:
+                        resp = r.json()
+                        st.success("Request sukses")
+                        st.json(resp)
+                    except Exception:
+                        st.success("Request sukses (non-JSON response)")
+                        st.text(r.text[:1000])
+                except requests.RequestException as e:
+                    st.error(f"Error saat memanggil API: {e}")
