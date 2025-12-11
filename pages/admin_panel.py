@@ -8,9 +8,9 @@ import json
 import time
 from sklearn.model_selection import train_test_split
 
-
 sys.path.append(str(Path(__file__).parent.parent))
 from utils.auth import initialize_auth_state, require_auth, logout
+
 
 def read_csv_strip_quotes(uploaded_file):
     raw = uploaded_file.getvalue()
@@ -48,6 +48,7 @@ def safe_read_csv(uploaded_file, required_cols):
         return df, False, f"Kolom wajib hilang → {', '.join(missing)}"
     return df, True, None
 
+
 st.set_page_config(page_title="Admin Panel", layout="wide", initial_sidebar_state="collapsed")
 
 initialize_auth_state()
@@ -81,6 +82,7 @@ st.markdown("### Upload CSV (Train / Val / Test)")
 col_train, col_val, col_test = st.columns(3)
 
 train_file = val_file = test_file = None
+
 df_train = df_val = df_test = None
 
 col_sent1 = "sentence1"
@@ -88,7 +90,7 @@ col_sent2 = "sentence2"
 col_label = "label"
 required_cols = [col_sent1, col_sent2, col_label]
 
-st.info("CSV harus memiliki header: 'sentence1', 'sentence2', 'label'")
+st.info("CSV harus memiliki header: 'sentence1', 'sentence2', 'label'. Train dan Validation wajib; Test optional (jika kosong akan di-split dari Validation).")
 
 with col_train:
     st.subheader("Train CSV (required)")
@@ -103,14 +105,13 @@ with col_train:
             st.metric("Rows", len(df_train))
             st.metric("Columns", len(df_train.columns))
             st.success("Dokumen valid — semua kolom ditemukan")
-            # st.dataframe(df_train[[col_sent1, col_sent2, col_label]].head(5), use_container_width=True)
         elif df_train is not None and not train_valid:
-            st.info("header tidak sesuai.")
+            st.info("Header tidak sesuai.")
     else:
-        st.warning("Train CSV wajib diupload")
+        st.error("Train CSV wajib diupload")
 
 with col_val:
-    st.subheader("Validation CSV (optional)")
+    st.subheader("Validation CSV (required)")
     val_file = st.file_uploader("Upload validation CSV", type=['csv'], key='val_file')
     val_valid = False
     val_err = None
@@ -122,12 +123,13 @@ with col_val:
             st.metric("Rows", len(df_val))
             st.metric("Columns", len(df_val.columns))
             st.success("Dokumen valid — semua kolom ditemukan")
-            # st.dataframe(df_val[[col_sent1, col_sent2, col_label]].head(5), use_container_width=True)
         elif df_val is not None and not val_valid:
-            st.info("header tidak sesuai.")
+            st.info("Header tidak sesuai.")
+    else:
+        st.error("Validation CSV wajib diupload")
 
 with col_test:
-    st.subheader("Test CSV (required)")
+    st.subheader("Test CSV (optional)")
     test_file = st.file_uploader("Upload test CSV", type=['csv'], key='test_file')
     test_valid = False
     test_err = None
@@ -139,35 +141,69 @@ with col_test:
             st.metric("Rows", len(df_test))
             st.metric("Columns", len(df_test.columns))
             st.success("Dokumen valid — semua kolom ditemukan")
-            # st.dataframe(df_test[[col_sent1, col_sent2, col_label]].head(5), use_container_width=True)
         elif df_test is not None and not test_valid:
-            st.info("header tidak sesuai.")
+            st.info("Header tidak sesuai.")
     else:
-        st.warning("Test CSV wajib diupload")
+        st.info("Test CSV kosong — akan di-split dari Validation saat proses dimulai jika diperlukan")
 
 st.markdown("---")
 
-def summarize_df(df):
-    if df is None:
-        return None
-    total = len(df)
-    s1_nonnull = int(df[col_sent1].notna().sum())
-    s2_nonnull = int(df[col_sent2].notna().sum())
-    label_nonnull = int(df[col_label].notna().sum()) if col_label in df.columns else 0
-    vc = df[col_label].value_counts(dropna=False) if col_label in df.columns else pd.Series(dtype=int)
-    label_0 = int(vc.get(0, 0))
-    label_1 = int(vc.get(1, 0))
-    pct_0 = round(label_0 / total * 100, 2) if total > 0 else 0.0
-    pct_1 = round(label_1 / total * 100, 2) if total > 0 else 0.0
-    combined = (df[col_sent1].fillna("").astype(str) + " " + df[col_sent2].fillna("").astype(str)).str.len()
-    qs = combined.quantile([0.25, 0.5, 0.75, 0.95, 1.0]).to_dict()
-    qtable = {25: int(qs.get(0.25, 0)), 50: int(qs.get(0.5, 0)), 75: int(qs.get(0.75, 0)), 95: int(qs.get(0.95, 0)), 100: int(qs.get(1.0, 0))}
-    max_len = qtable[95]
-    return {"total": total, "s1_nonnull": s1_nonnull, "s2_nonnull": s2_nonnull, "label_nonnull": label_nonnull, "label_0": label_0, "label_1": label_1, "pct_0": pct_0, "pct_1": pct_1, "qtable": qtable, "max_len": max_len}
-
-train_summary = summarize_df(df_train) if (df_train is not None and train_valid) else None
-val_summary = summarize_df(df_val) if (df_val is not None and val_valid) else None
-test_summary = summarize_df(df_test) if (df_test is not None and test_valid) else None
+train_summary = None
+val_summary = None
+test_summary = None
+if df_train is not None and train_valid:
+    def summarize_df(df):
+        total = len(df)
+        s1_nonnull = int(df[col_sent1].notna().sum())
+        s2_nonnull = int(df[col_sent2].notna().sum())
+        label_nonnull = int(df[col_label].notna().sum()) if col_label in df.columns else 0
+        vc = df[col_label].value_counts(dropna=False) if col_label in df.columns else pd.Series(dtype=int)
+        label_0 = int(vc.get(0, 0))
+        label_1 = int(vc.get(1, 0))
+        pct_0 = round(label_0 / total * 100, 2) if total > 0 else 0.0
+        pct_1 = round(label_1 / total * 100, 2) if total > 0 else 0.0
+        combined = (df[col_sent1].fillna("").astype(str) + " " + df[col_sent2].fillna("").astype(str)).str.len()
+        qs = combined.quantile([0.25, 0.5, 0.75, 0.95, 1.0]).to_dict()
+        qtable = {25: int(qs.get(0.25, 0)), 50: int(qs.get(0.5, 0)), 75: int(qs.get(0.75, 0)), 95: int(qs.get(0.95, 0)), 100: int(qs.get(1.0, 0))}
+        max_len = qtable[95]
+        return {"total": total, "s1_nonnull": s1_nonnull, "s2_nonnull": s2_nonnull, "label_nonnull": label_nonnull, "label_0": label_0, "label_1": label_1, "pct_0": pct_0, "pct_1": pct_1, "qtable": qtable, "max_len": max_len}
+    train_summary = summarize_df(df_train)
+if df_val is not None and val_valid:
+    if 'summarize_df' not in locals():
+        def summarize_df(df):
+            total = len(df)
+            s1_nonnull = int(df[col_sent1].notna().sum())
+            s2_nonnull = int(df[col_sent2].notna().sum())
+            label_nonnull = int(df[col_label].notna().sum()) if col_label in df.columns else 0
+            vc = df[col_label].value_counts(dropna=False) if col_label in df.columns else pd.Series(dtype=int)
+            label_0 = int(vc.get(0, 0))
+            label_1 = int(vc.get(1, 0))
+            pct_0 = round(label_0 / total * 100, 2) if total > 0 else 0.0
+            pct_1 = round(label_1 / total * 100, 2) if total > 0 else 0.0
+            combined = (df[col_sent1].fillna("").astype(str) + " " + df[col_sent2].fillna("").astype(str)).str.len()
+            qs = combined.quantile([0.25, 0.5, 0.75, 0.95, 1.0]).to_dict()
+            qtable = {25: int(qs.get(0.25, 0)), 50: int(qs.get(0.5, 0)), 75: int(qs.get(0.75, 0)), 95: int(qs.get(0.95, 0)), 100: int(qs.get(1.0, 0))}
+            max_len = qtable[95]
+            return {"total": total, "s1_nonnull": s1_nonnull, "s2_nonnull": s2_nonnull, "label_nonnull": label_nonnull, "label_0": label_0, "label_1": label_1, "pct_0": pct_0, "pct_1": pct_1, "qtable": qtable, "max_len": max_len}
+    val_summary = summarize_df(df_val)
+if df_test is not None and test_valid:
+    if 'summarize_df' not in locals():
+        def summarize_df(df):
+            total = len(df)
+            s1_nonnull = int(df[col_sent1].notna().sum())
+            s2_nonnull = int(df[col_sent2].notna().sum())
+            label_nonnull = int(df[col_label].notna().sum()) if col_label in df.columns else 0
+            vc = df[col_label].value_counts(dropna=False) if col_label in df.columns else pd.Series(dtype=int)
+            label_0 = int(vc.get(0, 0))
+            label_1 = int(vc.get(1, 0))
+            pct_0 = round(label_0 / total * 100, 2) if total > 0 else 0.0
+            pct_1 = round(label_1 / total * 100, 2) if total > 0 else 0.0
+            combined = (df[col_sent1].fillna("").astype(str) + " " + df[col_sent2].fillna("").astype(str)).str.len()
+            qs = combined.quantile([0.25, 0.5, 0.75, 0.95, 1.0]).to_dict()
+            qtable = {25: int(qs.get(0.25, 0)), 50: int(qs.get(0.5, 0)), 75: int(qs.get(0.75, 0)), 95: int(qs.get(0.95, 0)), 100: int(qs.get(1.0, 0))}
+            max_len = qtable[95]
+            return {"total": total, "s1_nonnull": s1_nonnull, "s2_nonnull": s2_nonnull, "label_nonnull": label_nonnull, "label_0": label_0, "label_1": label_1, "pct_0": pct_0, "pct_1": pct_1, "qtable": qtable, "max_len": max_len}
+    test_summary = summarize_df(df_test)
 
 st.markdown("### Dataset summary")
 c1, c2, c3 = st.columns(3)
@@ -178,7 +214,7 @@ for col, name, summary, df in zip((c1, c2, c3), ("Train", "Validation", "Test"),
             st.write("N/A")
             continue
         st.markdown("<div class='summary-card'>", unsafe_allow_html=True)
-        st.metric("Rows", summary["total"])
+        st.metric("Rows", summary["total"]) 
         st.write(f"Sentence1 non-null: {summary['s1_nonnull']}")
         st.write(f"Sentence2 non-null: {summary['s2_nonnull']}")
         st.write(f"Label non-null: {summary['label_nonnull']}")
@@ -228,19 +264,28 @@ with right:
 
 st.markdown("---")
 
-opt_col1, opt_col2 = st.columns(2)
-with opt_col1:
-    lr_min = st.number_input("Learning rate (min)", value=1e-5, format="%.6g", key="lr_min")
-    lr_max = st.number_input("Learning rate (max)", value=1e-3, format="%.6g", key="lr_max")
-with opt_col2:
-    drop_min = st.number_input("Dropout (min, 0.0 - 1.0)", min_value=0.0, max_value=1.0, value=0.1, step=0.01, key="drop_min")
-    drop_max = st.number_input("Dropout (max, 0.0 - 1.0)", min_value=0.0, max_value=1.0, value=0.5, step=0.01, key="drop_max")
+st.markdown("### Hyperband search lists (learning rate, dropout, weight decay)")
+col_lr, col_drop, col_wd = st.columns(3)
+with col_lr:
+    lr_count = st.number_input("Jumlah nilai learning rate", min_value=1, max_value=20, value=3, step=1, key="lr_count")
+    lr_values = []
+    for i in range(lr_count):
+        v = st.number_input(f"LR value {i+1}", value=10**(-4 + i), format="%.8g", key=f"lr_v_{i}")
+        lr_values.append(float(v))
+with col_drop:
+    drop_count = st.number_input("Jumlah nilai dropout", min_value=1, max_value=20, value=3, step=1, key="drop_count")
+    drop_values = []
+    for i in range(drop_count):
+        v = st.number_input(f"Dropout value {i+1}", min_value=0.0, max_value=1.0, value=0.1 + 0.1*i, step=0.01, format="%.2f", key=f"drop_v_{i}")
+        drop_values.append(float(v))
+with col_wd:
+    wd_count = st.number_input("Jumlah nilai weight decay", min_value=1, max_value=20, value=2, step=1, key="wd_count")
+    wd_values = []
+    for i in range(wd_count):
+        v = st.number_input(f"WD value {i+1}", value=1e-4 * (i+1), format="%.8g", key=f"wd_v_{i}")
+        wd_values.append(float(v))
 
-wd_col1, wd_col2 = st.columns(2)
-with wd_col1:
-    wd_min = st.number_input("Weight decay (min)", min_value=0.0, value=0.0, step=1e-8, format="%.8g", key="wd_min")
-with wd_col2:
-    wd_max = st.number_input("Weight decay (max)", min_value=0.0, value=1e-4, step=1e-8, format="%.8g", key="wd_max")
+st.markdown("---")
 
 hb_col3, hb_col4 = st.columns(2)
 with hb_col3:
@@ -260,34 +305,35 @@ st.markdown("---")
 st.markdown("### Setelah Hyperband")
 full_training = st.radio("Lakukan full training setelah Hyperband?", options=["Ya","Tidak"], index=0)
 
-any_uploaded = all([train_file is not None, test_file is not None])
-all_uploaded_valid = all([train_valid, test_valid])
+any_uploaded = all([train_file is not None, val_file is not None])
+all_uploaded_valid = all([train_valid, val_valid]) and (not test_file or test_valid)
 
 disabled = False
 reasons = []
 if not any_uploaded:
     disabled = True
-    reasons.append("Train dan Test wajib diupload")
+    reasons.append("Train dan Validation wajib diupload")
 if not all_uploaded_valid:
     disabled = True
-    reasons.append("Train dan Test wajib valid (cek pesan di tiap kolom)")
+    reasons.append("Train/Validation/Test tidak valid (cek pesan di tiap kolom)")
 
 if disabled:
     st.info("Tidak dapat memulai proses: " + "; ".join(reasons))
+
 
 def prepare_splits(df_train, df_val, df_test, label_col, seed=42):
     train_df = df_train.copy() if df_train is not None else None
     val_df = df_val.copy() if df_val is not None else None
     test_df = df_test.copy() if df_test is not None else None
-    if val_df is None and test_df is not None:
-        if label_col in test_df.columns:
-            stratify_col = test_df[label_col]
-            dev, test = train_test_split(test_df, test_size=0.2, random_state=seed, stratify=stratify_col)
+    if test_df is None and val_df is not None:
+        if label_col in val_df.columns:
+            dev, test = train_test_split(val_df, test_size=0.2, random_state=seed, stratify=val_df[label_col])
         else:
-            dev, test = train_test_split(test_df, test_size=0.2, random_state=seed)
+            dev, test = train_test_split(val_df, test_size=0.2, random_state=seed)
         val_df = dev.reset_index(drop=True)
         test_df = test.reset_index(drop=True)
     return train_df, val_df, test_df
+
 
 def sample_for_hyperband(df, pct, seed=42):
     if df is None or pct <= 0:
@@ -304,9 +350,9 @@ if st.button("Mulai Training", type="primary", disabled=disabled):
         "batch_size": int(batch_size),
         "bilstm_values": bilstm_values,
         "attention_values": attention_values,
-        "lr_range": [float(lr_min), float(lr_max)],
-        "dropout_range": [float(drop_min), float(drop_max)],
-        "weight_decay_range": [float(wd_min), float(wd_max)],
+        "lr_values": lr_values,
+        "dropout_values": drop_values,
+        "weight_decay_values": wd_values,
         "max_epochs": int(max_epochs),
         "max_trials": int(max_trials),
         "sampling_pct": {"train": int(samp_train_pct), "val": int(samp_val_pct), "test": int(samp_test_pct)},
