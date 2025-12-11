@@ -78,19 +78,37 @@ with col2:
 
 st.markdown("---")
 
+# config
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB
+
 st.markdown("### Upload CSV (Train / Val / Test)")
+col_map, _ = st.columns([2,1])
+with col_map:
+    st.markdown("**Mapping kolom (sesuaikan dengan header CSV kamu).**")
+    col_sent1 = st.text_input("Nama header untuk sentence1", value="sentence1")
+    col_sent2 = st.text_input("Nama header untuk sentence2", value="sentence2")
+    col_label = st.text_input("Nama header untuk label", value="label")
+
+required_cols = [col_sent1, col_sent2, col_label]
+
+st.info("Train & Validation wajib. Test optional (jika kosong akan di-split dari Validation). File max 25MB per file.")
+
 col_train, col_val, col_test = st.columns(3)
 
 train_file = val_file = test_file = None
 
 df_train = df_val = df_test = None
 
-col_sent1 = "sentence1"
-col_sent2 = "sentence2"
-col_label = "label"
-required_cols = [col_sent1, col_sent2, col_label]
-
-st.info("CSV harus memiliki header: 'sentence1', 'sentence2', 'label'. Train dan Validation wajib; Test optional (jika kosong akan di-split dari Validation).")
+# uploader helper that checks size and reads
+def handle_upload(uploader, key, required_cols):
+    f = uploader
+    if not f:
+        return None, False, "not_uploaded"
+    if hasattr(f, 'size') and f.size is not None:
+        if f.size > MAX_UPLOAD_BYTES:
+            return None, False, f"file_too_large: {f.size} bytes"
+    df, valid, err = safe_read_csv(f, required_cols)
+    return df, valid, err
 
 with col_train:
     st.subheader("Train CSV (required)")
@@ -98,15 +116,20 @@ with col_train:
     train_valid = False
     train_err = None
     if train_file:
-        df_train, train_valid, train_err = safe_read_csv(train_file, required_cols)
-        if train_err:
-            st.error(train_err)
-        if df_train is not None and train_valid:
-            st.metric("Rows", len(df_train))
-            st.metric("Columns", len(df_train.columns))
-            st.success("Dokumen valid — semua kolom ditemukan")
-        elif df_train is not None and not train_valid:
-            st.info("Header tidak sesuai.")
+        if train_file.size > MAX_UPLOAD_BYTES:
+            st.error("File terlalu besar — maksimal 25 MB")
+            train_file = None
+            train_valid = False
+        else:
+            df_train, train_valid, train_err = safe_read_csv(train_file, required_cols)
+            if train_err:
+                st.error(train_err)
+            if df_train is not None and train_valid:
+                st.metric("Rows", len(df_train))
+                st.metric("Columns", len(df_train.columns))
+                st.success("Dokumen valid — semua kolom ditemukan")
+            elif df_train is not None and not train_valid:
+                st.error("Kolom wajib hilang atau header tidak sesuai: " + ", ".join([c for c in required_cols if c not in list(df_train.columns)]))
     else:
         st.error("Train CSV wajib diupload")
 
@@ -116,15 +139,20 @@ with col_val:
     val_valid = False
     val_err = None
     if val_file:
-        df_val, val_valid, val_err = safe_read_csv(val_file, required_cols)
-        if val_err:
-            st.error(val_err)
-        if df_val is not None and val_valid:
-            st.metric("Rows", len(df_val))
-            st.metric("Columns", len(df_val.columns))
-            st.success("Dokumen valid — semua kolom ditemukan")
-        elif df_val is not None and not val_valid:
-            st.info("Header tidak sesuai.")
+        if val_file.size > MAX_UPLOAD_BYTES:
+            st.error("File terlalu besar — maksimal 25 MB")
+            val_file = None
+            val_valid = False
+        else:
+            df_val, val_valid, val_err = safe_read_csv(val_file, required_cols)
+            if val_err:
+                st.error(val_err)
+            if df_val is not None and val_valid:
+                st.metric("Rows", len(df_val))
+                st.metric("Columns", len(df_val.columns))
+                st.success("Dokumen valid — semua kolom ditemukan")
+            elif df_val is not None and not val_valid:
+                st.error("Kolom wajib hilang atau header tidak sesuai: " + ", ".join([c for c in required_cols if c not in list(df_val.columns)]))
     else:
         st.error("Validation CSV wajib diupload")
 
@@ -134,20 +162,26 @@ with col_test:
     test_valid = False
     test_err = None
     if test_file:
-        df_test, test_valid, test_err = safe_read_csv(test_file, required_cols)
-        if test_err:
-            st.error(test_err)
-        if df_test is not None and test_valid:
-            st.metric("Rows", len(df_test))
-            st.metric("Columns", len(df_test.columns))
-            st.success("Dokumen valid — semua kolom ditemukan")
-        elif df_test is not None and not test_valid:
-            st.info("Header tidak sesuai.")
+        if test_file.size > MAX_UPLOAD_BYTES:
+            st.error("File terlalu besar — maksimal 25 MB")
+            test_file = None
+            test_valid = False
+        else:
+            df_test, test_valid, test_err = safe_read_csv(test_file, required_cols)
+            if test_err:
+                st.error(test_err)
+            if df_test is not None and test_valid:
+                st.metric("Rows", len(df_test))
+                st.metric("Columns", len(df_test.columns))
+                st.success("Dokumen valid — semua kolom ditemukan")
+            elif df_test is not None and not test_valid:
+                st.error("Kolom wajib hilang atau header tidak sesuai: " + ", ".join([c for c in required_cols if c not in list(df_test.columns)]))
     else:
         st.info("Test CSV kosong — akan di-split dari Validation saat proses dimulai jika diperlukan")
 
 st.markdown("---")
 
+# summaries
 train_summary = None
 val_summary = None
 test_summary = None
@@ -169,40 +203,8 @@ if df_train is not None and train_valid:
         return {"total": total, "s1_nonnull": s1_nonnull, "s2_nonnull": s2_nonnull, "label_nonnull": label_nonnull, "label_0": label_0, "label_1": label_1, "pct_0": pct_0, "pct_1": pct_1, "qtable": qtable, "max_len": max_len}
     train_summary = summarize_df(df_train)
 if df_val is not None and val_valid:
-    if 'summarize_df' not in locals():
-        def summarize_df(df):
-            total = len(df)
-            s1_nonnull = int(df[col_sent1].notna().sum())
-            s2_nonnull = int(df[col_sent2].notna().sum())
-            label_nonnull = int(df[col_label].notna().sum()) if col_label in df.columns else 0
-            vc = df[col_label].value_counts(dropna=False) if col_label in df.columns else pd.Series(dtype=int)
-            label_0 = int(vc.get(0, 0))
-            label_1 = int(vc.get(1, 0))
-            pct_0 = round(label_0 / total * 100, 2) if total > 0 else 0.0
-            pct_1 = round(label_1 / total * 100, 2) if total > 0 else 0.0
-            combined = (df[col_sent1].fillna("").astype(str) + " " + df[col_sent2].fillna("").astype(str)).str.len()
-            qs = combined.quantile([0.25, 0.5, 0.75, 0.95, 1.0]).to_dict()
-            qtable = {25: int(qs.get(0.25, 0)), 50: int(qs.get(0.5, 0)), 75: int(qs.get(0.75, 0)), 95: int(qs.get(0.95, 0)), 100: int(qs.get(1.0, 0))}
-            max_len = qtable[95]
-            return {"total": total, "s1_nonnull": s1_nonnull, "s2_nonnull": s2_nonnull, "label_nonnull": label_nonnull, "label_0": label_0, "label_1": label_1, "pct_0": pct_0, "pct_1": pct_1, "qtable": qtable, "max_len": max_len}
     val_summary = summarize_df(df_val)
 if df_test is not None and test_valid:
-    if 'summarize_df' not in locals():
-        def summarize_df(df):
-            total = len(df)
-            s1_nonnull = int(df[col_sent1].notna().sum())
-            s2_nonnull = int(df[col_sent2].notna().sum())
-            label_nonnull = int(df[col_label].notna().sum()) if col_label in df.columns else 0
-            vc = df[col_label].value_counts(dropna=False) if col_label in df.columns else pd.Series(dtype=int)
-            label_0 = int(vc.get(0, 0))
-            label_1 = int(vc.get(1, 0))
-            pct_0 = round(label_0 / total * 100, 2) if total > 0 else 0.0
-            pct_1 = round(label_1 / total * 100, 2) if total > 0 else 0.0
-            combined = (df[col_sent1].fillna("").astype(str) + " " + df[col_sent2].fillna("").astype(str)).str.len()
-            qs = combined.quantile([0.25, 0.5, 0.75, 0.95, 1.0]).to_dict()
-            qtable = {25: int(qs.get(0.25, 0)), 50: int(qs.get(0.5, 0)), 75: int(qs.get(0.75, 0)), 95: int(qs.get(0.95, 0)), 100: int(qs.get(1.0, 0))}
-            max_len = qtable[95]
-            return {"total": total, "s1_nonnull": s1_nonnull, "s2_nonnull": s2_nonnull, "label_nonnull": label_nonnull, "label_0": label_0, "label_1": label_1, "pct_0": pct_0, "pct_1": pct_1, "qtable": qtable, "max_len": max_len}
     test_summary = summarize_df(df_test)
 
 st.markdown("### Dataset summary")
@@ -215,9 +217,9 @@ for col, name, summary, df in zip((c1, c2, c3), ("Train", "Validation", "Test"),
             continue
         st.markdown("<div class='summary-card'>", unsafe_allow_html=True)
         st.metric("Rows", summary["total"]) 
-        st.write(f"Sentence1 non-null: {summary['s1_nonnull']}")
-        st.write(f"Sentence2 non-null: {summary['s2_nonnull']}")
-        st.write(f"Label non-null: {summary['label_nonnull']}")
+        st.write(f"{col_sent1} non-null: {summary['s1_nonnull']}")
+        st.write(f"{col_sent2} non-null: {summary['s2_nonnull']}")
+        st.write(f"{col_label} non-null: {summary['label_nonnull']}")
         st.write(f"Label distribution: 0 = {summary['label_0']} ({summary['pct_0']}%), 1 = {summary['label_1']} ({summary['pct_1']}%)")
         qt = summary["qtable"]
         qdf = pd.DataFrame({"percentile": ["P25","P50","P75","P95","P100"], "chars": [qt[25], qt[50], qt[75], qt[95], qt[100]]})
@@ -270,7 +272,7 @@ with col_lr:
     lr_count = st.number_input("Jumlah nilai learning rate", min_value=1, max_value=20, value=3, step=1, key="lr_count")
     lr_values = []
     for i in range(lr_count):
-        v = st.number_input(f"LR value {i+1}", value=10**(-4 + i), format="%.8g", key=f"lr_v_{i}")
+        v = st.number_input(f"LR value {i+1}", value=1e-4 * (10**i) if i>0 else 1e-4, format="%.8g", key=f"lr_v_{i}")
         lr_values.append(float(v))
 with col_drop:
     drop_count = st.number_input("Jumlah nilai dropout", min_value=1, max_value=20, value=3, step=1, key="drop_count")
