@@ -11,7 +11,6 @@ from sklearn.model_selection import train_test_split
 sys.path.append(str(Path(__file__).parent.parent))
 from utils.auth import initialize_auth_state, require_auth, logout
 
-
 def read_csv_strip_quotes(uploaded_file):
     raw = uploaded_file.getvalue()
     try:
@@ -47,7 +46,6 @@ def safe_read_csv(uploaded_file, required_cols):
     if missing:
         return df, False, f"Kolom wajib hilang → {', '.join(missing)}"
     return df, True, None
-
 
 st.set_page_config(page_title="Admin Panel", layout="wide", initial_sidebar_state="collapsed")
 
@@ -91,7 +89,7 @@ with col_map:
 
 required_cols = [col_sent1, col_sent2, col_label]
 
-st.info("Train & Validation wajib. Test optional (jika kosong akan di-split dari Validation). File max 25MB per file.")
+st.info("Train & Validation wajib. Test optional (jika kosong akan di-split dari Train). File max 25MB per file.")
 
 col_train, col_val, col_test = st.columns(3)
 
@@ -177,7 +175,7 @@ with col_test:
             elif df_test is not None and not test_valid:
                 st.error("Kolom wajib hilang atau header tidak sesuai: " + ", ".join([c for c in required_cols if c not in list(df_test.columns)]))
     else:
-        st.info("Test CSV kosong — akan di-split dari Validation saat proses dimulai jika diperlukan")
+        st.info("Test CSV kosong — akan di-split dari Train saat proses dimulai jika diperlukan")
 
 st.markdown("---")
 
@@ -322,32 +320,11 @@ if not all_uploaded_valid:
 if disabled:
     st.info("Tidak dapat memulai proses: " + "; ".join(reasons))
 
-
-def prepare_splits(df_train, df_val, df_test, label_col, seed=42):
-    train_df = df_train.copy() if df_train is not None else None
-    val_df = df_val.copy() if df_val is not None else None
-    test_df = df_test.copy() if df_test is not None else None
-    if test_df is None and val_df is not None:
-        if label_col in val_df.columns:
-            dev, test = train_test_split(val_df, test_size=0.2, random_state=seed, stratify=val_df[label_col])
-        else:
-            dev, test = train_test_split(val_df, test_size=0.2, random_state=seed)
-        val_df = dev.reset_index(drop=True)
-        test_df = test.reset_index(drop=True)
-    return train_df, val_df, test_df
-
-
-def sample_for_hyperband(df, pct, seed=42):
-    if df is None or pct <= 0:
-        return None
-    n = max(1, int(len(df) * pct / 100))
-    return df.sample(n=n, random_state=seed).reset_index(drop=True)
-
 API_URL = "https://your.api.server/find-hyperparameter"
 API_TIMEOUT = 60
 
+# ketika ditekan -> langsung hit API tanpa dialog konfirmasi
 if st.button("Mulai Training", type="primary", disabled=disabled):
-    train_df_proc, val_df_proc, test_df_proc = prepare_splits(df_train, df_val, df_test, col_label)
     cfg = {
         "batch_size": int(batch_size),
         "bilstm_values": bilstm_values,
@@ -358,44 +335,28 @@ if st.button("Mulai Training", type="primary", disabled=disabled):
         "max_epochs": int(max_epochs),
         "max_trials": int(max_trials),
         "sampling_pct": {"train": int(samp_train_pct), "val": int(samp_val_pct), "test": int(samp_test_pct)},
-        "full_training": full_training == "Ya"
+        "full_training": full_training == "Ya",
+        "column_mapping": {"sentence1": col_sent1, "sentence2": col_sent2, "label": col_label}
     }
-    with st.dialog("Konfirmasi konfigurasi & dataset"):
-        st.subheader("Konfigurasi")
-        st.json(cfg)
-        st.subheader("Train summary")
-        if train_summary:
-            st.write(f"rows: {train_summary['total']}")
-            st.write(f"label 0: {train_summary['label_0']} ({train_summary['pct_0']}%)")
-            st.write(f"label 1: {train_summary['label_1']} ({train_summary['pct_1']}%)")
-            st.write("percentiles (P25,P50,P75,P95,P100):", train_summary["qtable"])
-            st.write("Max len (use P95):", train_summary["max_len"])
-            st.write("Sample rows (train):")
-            st.dataframe(df_train[[col_sent1, col_sent2, col_label]].head(5), use_container_width=True)
-        else:
-            st.write("N/A")
-        col_ok, col_cancel = st.columns(2)
-        if col_cancel.button("Batal"):
-            st.info("Proses dibatalkan")
-        if col_ok.button("Konfirmasi & Jalankan"):
-            with st.spinner("Mengirim request ke API..."):
-                files = {}
-                if train_file:
-                    files["train"] = (train_file.name, train_file.getvalue(), "text/csv")
-                if val_file:
-                    files["val"] = (val_file.name, val_file.getvalue(), "text/csv")
-                if test_file:
-                    files["test"] = (test_file.name, test_file.getvalue(), "text/csv")
-                data = {"payload": json.dumps(cfg)}
-                try:
-                    r = requests.post(API_URL, data=data, files=files, timeout=API_TIMEOUT)
-                    r.raise_for_status()
-                    try:
-                        resp = r.json()
-                        st.success("Request sukses")
-                        st.json(resp)
-                    except Exception:
-                        st.success("Request sukses (non-JSON response)")
-                        st.text(r.text[:1000])
-                except requests.RequestException as e:
-                    st.error(f"Error saat memanggil API: {e}")
+
+    with st.spinner("Mengirim konfigurasi dan file ke backend..."):
+        files = {}
+        if train_file:
+            files["train"] = (train_file.name, train_file.getvalue(), "text/csv")
+        if val_file:
+            files["val"] = (val_file.name, val_file.getvalue(), "text/csv")
+        if test_file:
+            files["test"] = (test_file.name, test_file.getvalue(), "text/csv")
+        data = {"payload": json.dumps(cfg)}
+        try:
+            r = requests.post(API_URL, data=data, files=files, timeout=API_TIMEOUT)
+            r.raise_for_status()
+            try:
+                resp = r.json()
+                st.success("Request sukses")
+                st.json(resp)
+            except Exception:
+                st.success("Request sukses (non-JSON response)")
+                st.text(r.text[:1000])
+        except requests.RequestException as e:
+            st.error(f"Error saat memanggil API: {e}")
