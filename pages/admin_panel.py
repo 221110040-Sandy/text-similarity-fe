@@ -62,6 +62,13 @@ st.markdown("""
 
 require_auth()
 
+if "job_started" not in st.session_state:
+    st.session_state.job_started = False
+if "job_running" not in st.session_state:
+    st.session_state.job_running = False
+if "last_status" not in st.session_state:
+    st.session_state.last_status = None
+
 st.markdown("<div class='admin-header'><h1>Admin Dashboard</h1></div>", unsafe_allow_html=True)
 
 col1, col2 = st.columns([1,1])
@@ -320,43 +327,101 @@ if not all_uploaded_valid:
 if disabled:
     st.info("Tidak dapat memulai proses: " + "; ".join(reasons))
 
-API_URL = "https://your.api.server/find-hyperparameter"
+API_URL = "https://desertlike-nonrecognized-keagan.ngrok-free.dev/find-hyperparam"
 API_TIMEOUT = 60
-
-# ketika ditekan -> langsung hit API tanpa dialog konfirmasi
-if st.button("Mulai Training", type="primary", disabled=disabled):
-    cfg = {
-        "batch_size": int(batch_size),
-        "bilstm_values": bilstm_values,
-        "attention_values": attention_values,
-        "lr_values": lr_values,
-        "dropout_values": drop_values,
-        "weight_decay_values": wd_values,
-        "max_epochs": int(max_epochs),
-        "max_trials": int(max_trials),
-        "sampling_pct": {"train": int(samp_train_pct), "val": int(samp_val_pct), "test": int(samp_test_pct)},
-        "full_training": full_training == "Ya",
-        "column_mapping": {"sentence1": col_sent1, "sentence2": col_sent2, "label": col_label}
-    }
-
+if st.button(
+    "Mulai Training",
+    type="primary",
+    disabled=disabled or st.session_state.job_running
+):
+    st.session_state.job_running = True
     with st.spinner("Mengirim konfigurasi dan file ke backend..."):
-        files = {}
-        if train_file:
-            files["train"] = (train_file.name, train_file.getvalue(), "text/csv")
-        if val_file:
-            files["val"] = (val_file.name, val_file.getvalue(), "text/csv")
+
+        files = {
+            "dataset_train": (train_file.name, train_file.getvalue(), "text/csv"),
+            "dataset_dev": (val_file.name, val_file.getvalue(), "text/csv"),
+        }
         if test_file:
-            files["test"] = (test_file.name, test_file.getvalue(), "text/csv")
-        data = {"payload": json.dumps(cfg)}
+            files["dataset_test"] = (test_file.name, test_file.getvalue(), "text/csv")
+
+        data = {
+            "header_col1": col_sent1,
+            "header_col2": col_sent2,
+            "header_label": col_label,
+            "batch_size": int(batch_size),
+            "bilstm_units": ",".join(map(str, bilstm_values)),
+            "learning_rate": ",".join(map(str, lr_values)),
+            "dropout_rate": ",".join(map(str, drop_values)),
+            "weight_decay": ",".join(map(str, wd_values)),
+            "max_epochs": int(max_epochs),
+            "max_trials": int(max_trials),
+            "sampling_train": int(samp_train_pct),
+            "sampling_dev": int(samp_val_pct),
+            "sampling_test": int(samp_test_pct),
+            "train_full": full_training == "Ya",
+        }
+
         try:
-            r = requests.post(API_URL, data=data, files=files, timeout=API_TIMEOUT)
+            r = requests.post(API_URL, data=data, files=files, timeout=60)
             r.raise_for_status()
-            try:
-                resp = r.json()
-                st.success("Request sukses")
-                st.json(resp)
-            except Exception:
-                st.success("Request sukses (non-JSON response)")
-                st.text(r.text[:1000])
+
+            st.session_state.job_started = True
+            st.session_state.last_status = None
+
+            st.success("Job berhasil dikirim ke backend")
+            st.rerun()
+
         except requests.RequestException as e:
             st.error(f"Error saat memanggil API: {e}")
+
+STATUS_URL = "https://desertlike-nonrecognized-keagan.ngrok-free.dev/status"
+
+if st.session_state.job_started:
+    try:
+        resp = requests.get(STATUS_URL, timeout=10)
+        resp.raise_for_status()
+        status = resp.json()
+        st.session_state.last_status = status
+    except Exception as e:
+        st.session_state.job_running = False
+        st.error(f"Gagal ambil status: {e}")
+        status = st.session_state.last_status
+
+if st.session_state.last_status:
+    s = st.session_state.last_status
+
+    st.markdown("## Training Status")
+
+    st.write(f"**Status:** {s['status']}")
+    st.write(f"**Running:** {s['is_running']}")
+
+    prog = s.get("progress", {})
+    if prog:
+        cur = prog.get("current_trial", 0)
+        total = prog.get("total_trials", 1)
+        best = prog.get("best_loss")
+
+        st.progress(min(cur / max(total, 1), 1.0))
+        st.write(f"Trial {cur} / {total}")
+        if best is not None:
+            st.write(f"Best loss: `{best:.4f}`")
+
+    st.markdown("### Logs")
+    logs = s.get("recent_logs", [])
+    for log in logs[::-1]:
+        st.code(log)
+
+    if not s["is_running"]:
+        st.session_state.job_running = False
+        if s["status"] == "COMPLETED":
+            st.success("Training selesai 🎉")
+            st.json(s.get("result"))
+        else:
+            st.error("Training gagal")
+            st.json(s.get("result"))
+
+        st.session_state.job_started = False
+
+    else:
+        time.sleep(5)
+        st.rerun()
