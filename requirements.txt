@@ -2,6 +2,7 @@ streamlit==1.50.0
 plotly==5.18.0
 requests==2.31.0
 pandas==2.2.2
+python-dotenv==1.0.0
 
 PyPDF2==3.0.1
 pdfplumber==0.10.3

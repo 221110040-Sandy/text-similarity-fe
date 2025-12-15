@@ -6,7 +6,11 @@ from io import StringIO
 import requests
 import json
 import time
+import os
+from dotenv import load_dotenv
 from sklearn.model_selection import train_test_split
+
+load_dotenv()
 
 sys.path.append(str(Path(__file__).parent.parent))
 from utils.auth import initialize_auth_state, require_auth, logout
@@ -296,9 +300,9 @@ st.markdown("---")
 
 hb_col3, hb_col4 = st.columns(2)
 with hb_col3:
-    max_epochs = st.number_input("Max epochs (Hyperband)", min_value=1, value=50, step=1)
+    max_epochs = st.number_input("Max epochs (Hyperband)", min_value=1, value=5, step=1)
 with hb_col4:
-    max_trials = st.number_input("Max trials (Hyperband)", min_value=1, value=50, step=1)
+    max_trials = st.number_input("Max trials (Hyperband)", min_value=1, value=5, step=1)
 
 st.markdown("---")
 
@@ -326,8 +330,8 @@ if not all_uploaded_valid:
 
 if disabled:
     st.info("Tidak dapat memulai proses: " + "; ".join(reasons))
-
-API_URL = "https://desertlike-nonrecognized-keagan.ngrok-free.dev/find-hyperparam"
+URL = os.getenv("API_BASE_URL", "https://desertlike-nonrecognized-keagan.ngrok-free.dev")
+API_URL = URL + "/find-hyperparam"
 API_TIMEOUT = 60
 if st.button(
     "Mulai Training",
@@ -374,54 +378,55 @@ if st.button(
         except requests.RequestException as e:
             st.error(f"Error saat memanggil API: {e}")
 
-STATUS_URL = "https://desertlike-nonrecognized-keagan.ngrok-free.dev/status"
+STATUS_URL = URL + "/status"
 
 if st.session_state.job_started:
     try:
         resp = requests.get(STATUS_URL, timeout=10)
         resp.raise_for_status()
-        status = resp.json()
-        st.session_state.last_status = status
+        s = resp.json()
+        st.session_state.last_status = s
     except Exception as e:
-        st.session_state.job_running = False
         st.error(f"Gagal ambil status: {e}")
-        status = st.session_state.last_status
+        s = st.session_state.last_status
 
-if st.session_state.last_status:
-    s = st.session_state.last_status
+    if s:
+        status_text = s.get("status", "UNKNOWN")
+        is_running = status_text in ["TUNING", "TRAINING"]
 
-    st.markdown("## Training Status")
+        st.subheader("Training Status")
+        st.write(f"**Status:** {status_text}")
+        st.write(f"**Running:** {is_running}")
 
-    st.write(f"**Status:** {s['status']}")
-    st.write(f"**Running:** {s['is_running']}")
-
-    prog = s.get("progress", {})
-    if prog:
+        prog = s.get("progress", {})
         cur = prog.get("current_trial", 0)
-        total = prog.get("total_trials", 1)
+        total = prog.get("total_trials", 0)
         best = prog.get("best_loss")
 
-        st.progress(min(cur / max(total, 1), 1.0))
-        st.write(f"Trial {cur} / {total}")
+        if total > 0:
+            st.progress(min(cur / total, 1.0))
+            st.write(f"Trial {cur} / {total}")
+        else:
+            st.progress(0.0)
+            st.write(f"Trial {cur} (jumlah trial belum ditentukan)")
+
         if best is not None:
             st.write(f"Best loss: `{best:.4f}`")
 
-    st.markdown("### Logs")
-    logs = s.get("recent_logs", [])
-    for log in logs[::-1]:
-        st.code(log)
+        st.subheader("Logs")
+        for log in s.get("logs", [])[::-1]:
+            st.code(log)
 
-    if not s["is_running"]:
-        st.session_state.job_running = False
-        if s["status"] == "COMPLETED":
-            st.success("Training selesai 🎉")
-            st.json(s.get("result"))
+        if status_text in ["COMPLETED", "FAILED"]:
+            st.session_state.job_running = False
+            st.session_state.job_started = False
+
+            if status_text == "COMPLETED":
+                st.success("Training selesai 🎉")
+                st.json(s.get("result"))
+            else:
+                st.error("Training gagal")
+                st.json(s.get("result"))
         else:
-            st.error("Training gagal")
-            st.json(s.get("result"))
-
-        st.session_state.job_started = False
-
-    else:
-        time.sleep(5)
-        st.rerun()
+            time.sleep(5)
+            st.rerun()
