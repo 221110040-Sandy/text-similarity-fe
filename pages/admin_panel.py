@@ -243,52 +243,34 @@ st.markdown("---")
 st.markdown("### Training Options")
 batch_size = st.radio("Batch size", options=[16,32,64,128], index=1)
 
-st.markdown("### Hyperband configuration")
-left, right = st.columns(2)
+st.markdown("### Hyperband Configuration")
+st.info("ℹ️ **Note:** Nilai Attention akan otomatis dihitung sebagai BiLSTM × 2")
 
-with left:
+col_bilstm, col_lr, col_drop, col_wd = st.columns(4)
+
+with col_bilstm:
     bilstm_count = st.number_input("Jumlah nilai BiLSTM", min_value=1, max_value=20, value=3, step=1, key="bilstm_count")
     bilstm_values = []
-    n = int(bilstm_count)
-    rows = (n + 1) // 2
-    for r in range(rows):
-        c1, c2 = st.columns(2)
-        idx1 = r*2
-        idx2 = r*2 + 1
-        v1 = c1.number_input(f"BiLSTM value {idx1+1}", min_value=1, max_value=16384, value=64*(idx1+1), step=1, key=f"bilstm_v_{idx1}")
-        bilstm_values.append(int(v1))
-        if idx2 < n:
-            v2 = c2.number_input(f"BiLSTM value {idx2+1}", min_value=1, max_value=16384, value=64*(idx2+1), step=1, key=f"bilstm_v_{idx2}")
-            bilstm_values.append(int(v2))
-
-with right:
-    st.markdown("Attention units (BiLSTM * 2)")
+    for i in range(bilstm_count):
+        v = st.number_input(f"BiLSTM value {i+1}", min_value=1, max_value=16384, value=64*(i+1), step=1, key=f"bilstm_v_{i}")
+        bilstm_values.append(int(v))
+    # Calculate attention values (not displayed, just for backend)
     attention_values = [v * 2 for v in bilstm_values]
-    rows_att = (len(attention_values) + 1) // 2
-    for r in range(rows_att):
-        ca, cb = st.columns(2)
-        i1 = r*2
-        i2 = i1 + 1
-        ca.write(f"Attention value {i1+1}: {attention_values[i1]}")
-        if i2 < len(attention_values):
-            cb.write(f"Attention value {i2+1}: {attention_values[i2]}")
 
-st.markdown("---")
-
-st.markdown("### Hyperband search lists (learning rate, dropout, weight decay)")
-col_lr, col_drop, col_wd = st.columns(3)
 with col_lr:
     lr_count = st.number_input("Jumlah nilai learning rate", min_value=1, max_value=20, value=3, step=1, key="lr_count")
     lr_values = []
     for i in range(lr_count):
         v = st.number_input(f"LR value {i+1}", value=1e-4 * (10**i) if i>0 else 1e-4, format="%.8g", key=f"lr_v_{i}")
         lr_values.append(float(v))
+
 with col_drop:
     drop_count = st.number_input("Jumlah nilai dropout", min_value=1, max_value=20, value=3, step=1, key="drop_count")
     drop_values = []
     for i in range(drop_count):
         v = st.number_input(f"Dropout value {i+1}", min_value=0.0, max_value=1.0, value=0.1 + 0.1*i, step=0.01, format="%.2f", key=f"drop_v_{i}")
         drop_values.append(float(v))
+
 with col_wd:
     wd_count = st.number_input("Jumlah nilai weight decay", min_value=1, max_value=20, value=2, step=1, key="wd_count")
     wd_values = []

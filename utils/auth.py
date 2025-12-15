@@ -31,6 +31,8 @@ def login(username: str, password: str) -> bool:
 def logout():
     st.session_state.is_logged_in = False
     st.session_state.username = None
+    # Clear query params
+    st.query_params.clear()
 
 def is_logged_in() -> bool:
     return st.session_state.get('is_logged_in', False)
@@ -39,6 +41,16 @@ def get_current_user() -> str:
     return st.session_state.get('username', None)
 
 def require_auth():
+    # Check query params for auto-login token
+    query_params = st.query_params
+    if "auth_token" in query_params and "user" in query_params:
+        token = query_params.get("auth_token")
+        user = query_params.get("user")
+        expected_token = hashlib.sha256(f"{user}_admin_secret".encode()).hexdigest()
+        if token == expected_token and user in ADMIN_CREDENTIALS:
+            st.session_state.is_logged_in = True
+            st.session_state.username = user
+    
     if not is_logged_in():
         st.warning("Login terlebih dahulu untuk mengakses halaman ini.")
         show_login_form()
@@ -72,6 +84,10 @@ def show_login_form():
             if submit:
                 if username and password:
                     if login(username, password):
+                        # Set query params untuk persist session
+                        auth_token = hashlib.sha256(f"{username}_admin_secret".encode()).hexdigest()
+                        st.query_params["auth_token"] = auth_token
+                        st.query_params["user"] = username
                         st.success("Login berhasil! Redirecting...")
                         st.rerun()
                     else:
