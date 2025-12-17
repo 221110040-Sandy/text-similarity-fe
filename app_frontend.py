@@ -253,24 +253,14 @@ def validate_docx_file(uploaded_file):
     return True, "File DOCX valid"
 
 @st.cache_data(ttl=60)
-def check_api_health():
-    try:
-        response = requests.get(f"{API_BASE_URL}/health", timeout=5)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            return {"status": "error", "model_loaded": False}
-    except requests.exceptions.RequestException:
-        return {"status": "disconnected", "model_loaded": False}
-
 def predict_similarity_api(text1: str, text2: str):
     try:
         payload = {
-            "question1": text1,
-            "question2": text2
+            "sentence1": text1,
+            "sentence2": text2
         }
         response = requests.post(
-            f"{API_BASE_URL}/predict",
+            f"{API_BASE_URL}/sentence-similarity",
             json=payload,
             timeout=30
         )
@@ -278,8 +268,7 @@ def predict_similarity_api(text1: str, text2: str):
             resp = response.json()
             normalized = {
                 "similarity": resp.get("probability"),
-                "processing_time": resp.get("processing_time"),
-                "method": resp.get("prediction", "")
+                "label": resp.get("label", "")
             }
             return normalized
         else:
@@ -290,23 +279,23 @@ def predict_similarity_api(text1: str, text2: str):
     except requests.exceptions.RequestException as e:
         return {"error": f"Connection error: {str(e)}"}
 
-def predict_document_api(doc1: str, doc2: str, per_side_len: int = 28, stride: int = 28, topk_evidence: int = 5, use_symmetric: bool = True):
+def predict_document_api(doc1: str, doc2: str):
     try:
         payload = {
-            "doc1": doc1,
-            "doc2": doc2,
-            "per_side_len": per_side_len,
-            "stride": stride,
-            "topk_evidence": topk_evidence,
-            "use_symmetric": use_symmetric
+            "sentence1": doc1,
+            "sentence2": doc2
         }
         resp = requests.post(
-            f"{API_BASE_URL}/predict-document",
+            f"{API_BASE_URL}/document-similarity",
             json=payload,
             timeout=120
         )
         if resp.status_code == 200:
-            return resp.json()
+            data = resp.json()
+            return {
+                "similarity": data.get("probability"),
+                "label": data.get("label", "")
+            }
         else:
             det = resp.json().get("detail", f"HTTP {resp.status_code}")
             return {"error": f"API Error: {det}"}
@@ -315,7 +304,24 @@ def predict_document_api(doc1: str, doc2: str, per_side_len: int = 28, stride: i
     except requests.exceptions.RequestException as e:
         return {"error": f"Connection error: {str(e)}"}
 
-def create_similarity_gauge(similarity, method="", processing_time=0):
+def switch_model_api(target: str):
+    try:
+        resp = requests.post(
+            f"{API_BASE_URL}/switch-model",
+            params={"target": target},
+            timeout=1200
+        )
+        if resp.status_code == 200:
+            return {"success": True, "message": f"Model switched to {target}"}
+        else:
+            det = resp.json().get("detail", f"HTTP {resp.status_code}")
+            return {"success": False, "error": f"API Error: {det}"}
+    except requests.exceptions.Timeout:
+        return {"success": False, "error": "Request timeout"}
+    except requests.exceptions.RequestException as e:
+        return {"success": False, "error": f"Connection error: {str(e)}"}
+
+def create_similarity_gauge(similarity, label=""):
     if similarity >= 0.8:
         bar_color = "#f5576c"
     elif similarity >= 0.6:
@@ -366,25 +372,6 @@ def create_similarity_gauge(similarity, method="", processing_time=0):
     )
     return fig
 
-def create_performance_chart(results_history):
-    if not results_history:
-        return None
-    df = pd.DataFrame(results_history)
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=df.index,
-        y=df['processing_time'],
-        mode='lines+markers',
-        name='Neural Model'
-    ))
-    fig.update_layout(
-        title='Processing Time Comparison',
-        xaxis_title='Request Number',
-        yaxis_title='Processing Time (seconds)',
-        height=400
-    )
-    return fig
-
 initialize_auth_state()
 
 st.markdown("""
@@ -395,9 +382,6 @@ st.markdown("""
     <p>2025 / 2026</p>
 </div>
 """, unsafe_allow_html=True)
-
-# api_health = check_api_health()
-# api_connected = api_health["status"] in ["healthy", "unhealthy"]
 
 st.sidebar.markdown("## Menu Navigasi")
 analysis_type = st.sidebar.radio(
@@ -424,6 +408,31 @@ st.sidebar.markdown(
 )
 
 st.sidebar.markdown("---")
+
+if 'selected_model' not in st.session_state:
+    st.session_state.selected_model = 'manual'
+
+with st.sidebar:
+    st.markdown("### 🔄 Switch Model")
+    model_option = st.selectbox(
+        "Pilih model:",
+        ["manual", "colab"],
+        index=0 if st.session_state.selected_model == 'manual' else 1,
+        format_func=lambda x: "Base Model (manual)" if x == "manual" else "Retrain Model (colab)",
+        key="model_selector"
+    )
+    
+    if st.button("Ganti Model", use_container_width=True, type="secondary"):
+        with st.spinner(f"Switching to {model_option} model..."):
+            result = switch_model_api(model_option)
+            if result.get("success"):
+                st.session_state.selected_model = model_option
+                st.success(f"✅ Model switched to {model_option}")
+            else:
+                st.error(f"❌ {result.get('error', 'Failed to switch model')}")
+
+st.sidebar.markdown("---")
+
 with st.sidebar:
     if is_logged_in():
         if st.button("Admin Panel", key="admin_sidebar_logged", use_container_width=True, type="primary"):
@@ -431,8 +440,6 @@ with st.sidebar:
     else:
         if st.button("Login Admin", key="admin_sidebar_guest", use_container_width=True):
             st.switch_page("pages/admin_panel.py")
-
-if 'performance_history' not in st.session_state:
     st.session_state.performance_history = []
 
 if analysis_type == "📄 Text Similarity":
@@ -503,18 +510,17 @@ if analysis_type == "📄 Text Similarity":
             if not text1 or not text2:
                 st.error("Mohon masukkan kedua teks yang valid!")
             else:
-                with st.spinner("Menganalisis..."):
+                with st.spinner():
                     result = predict_similarity_api(text1, text2)
                 err = result.get("error") or result.get("detail")
                 if err:
                     st.error(f"{err}")
                 else:
                     similarity = result['similarity']
-                    processing_time = result['processing_time']
-                    method = result['method']
+                    label = result['label']
                     st.session_state.performance_history.append({
-                        'processing_time': processing_time,
-                        'similarity': similarity
+                        'similarity': similarity,
+                        'label': label
                     })
                     st.markdown("---")
                     st.markdown("""
@@ -525,21 +531,25 @@ if analysis_type == "📄 Text Similarity":
                     """, unsafe_allow_html=True)
                     col_space1, col_main, col_space2 = st.columns([1, 2, 1])
                     with col_main:
-                        if similarity >= 0.8:
+                        # Use label from backend response
+                        label_lower = label.lower() if label else ""
+                        if "sangat mirip" in label_lower or "identik" in label_lower:
                             bg_color = "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)"
                             status_icon = ""
-                            status_text = "SANGAT MIRIP"
                             status_desc = "Terdeteksi kemiripan sangat tinggi"
-                        elif similarity >= 0.6:
+                        elif "mirip" in label_lower:
                             bg_color = "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)"
                             status_icon = ""
-                            status_text = "CUKUP MIRIP"
                             status_desc = "Terdeteksi kemiripan sedang"
-                        else:
+                        elif "berbeda" in label_lower:
                             bg_color = "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)"
                             status_icon = ""
-                            status_text = "BERBEDA"
                             status_desc = "Tidak terdeteksi kemiripan signifikan"
+                        else:
+                            bg_color = "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+                            status_icon = ""
+                            status_desc = label
+                        status_text = label.upper() if label else "HASIL ANALISIS"
                         st.markdown(f"""
                         <div style='background: {bg_color}; padding: 2.5rem; border-radius: 20px; 
                                     text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.3);'>
@@ -575,15 +585,15 @@ if analysis_type == "📄 Text Similarity":
                         <div style='background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
                                     padding: 1.5rem; border-radius: 15px; border-left: 4px solid #764ba2;'>
                             <div style='color: #764ba2; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem;'>
-                                PROCESSING TIME
+                                LABEL
                             </div>
-                            <div style='font-size: 2rem; font-weight: 800; color: #ffffff;'>
-                                {processing_time:.3f}s
+                            <div style='font-size: 1.5rem; font-weight: 800; color: #ffffff;'>
+                                {label}
                             </div>
                         </div>
                         """, unsafe_allow_html=True)
                     st.markdown("<br>", unsafe_allow_html=True)
-                    gauge_fig = create_similarity_gauge(similarity, method, processing_time)
+                    gauge_fig = create_similarity_gauge(similarity, label)
                     st.plotly_chart(gauge_fig, use_container_width=True)
                     st.markdown("## Text Statistics")
                     col1, col2 = st.columns(2)
@@ -802,22 +812,13 @@ elif analysis_type == "📁 Document Similarity":
         if not doc1_content or not doc2_content:
             st.error("Mohon upload kedua dokumen yang valid!")
         else:
-            with st.spinner("Menganalisis dokumen (sliding window + BERTScore)..."):
-                    result = predict_document_api(
-                        doc1_content, doc2_content,
-                        per_side_len=28,
-                        stride=28,
-                        topk_evidence=5,
-                        use_symmetric=True
-                    )
+            with st.spinner("Menganalisis dokumen..."):
+                    result = predict_document_api(doc1_content, doc2_content)
             if "error" in result:
                 st.error(f"{result['error']}")
             else:
-                doc_score = result["doc_score"]
-                processing_time = result["processing_time"]
-                detail = result["detail"]
-                top_evidence = result["top_evidence"]
-                shape = result["shape"]
+                similarity = result["similarity"]
+                label = result["label"]
                 st.markdown("---")
                 st.markdown("""
                 <div style='text-align: center; padding: 1rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
@@ -827,27 +828,31 @@ elif analysis_type == "📁 Document Similarity":
                 """, unsafe_allow_html=True)
                 col_space1, col_main, col_space2 = st.columns([1, 2, 1])
                 with col_main:
-                    if doc_score >= 0.8:
+                    # Use label from backend response
+                    label_lower = label.lower() if label else ""
+                    if "sangat mirip" in label_lower or "identik" in label_lower:
                         bg_color = "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)"
                         status_icon = ""
-                        status_text = "KEMIRIPAN TINGGI"
                         status_desc = "Kemiripan sangat tinggi - potensi plagiarisme"
-                    elif doc_score >= 0.6:
+                    elif "mirip" in label_lower:
                         bg_color = "linear-gradient(135deg, #ffeaa7 0%, #fdcb6e 100%)"
                         status_icon = ""
-                        status_text = "KEMIRIPAN SEDANG"
                         status_desc = "Kemiripan cukup tinggi - perlu verifikasi"
-                    else:
+                    elif "berbeda" in label_lower:
                         bg_color = "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)"
                         status_icon = ""
-                        status_text = "DOKUMEN UNIK"
                         status_desc = "Tidak terdeteksi plagiarisme signifikan"
+                    else:
+                        bg_color = "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+                        status_icon = ""
+                        status_desc = label
+                    status_text = label.upper() if label else "HASIL ANALISIS"
                     st.markdown(f"""
                     <div style='background: {bg_color}; padding: 2.5rem; border-radius: 20px; 
                                 text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.3);'>
                         <div style='font-size: 4rem; margin-bottom: 0.5rem;'>{status_icon}</div>
                         <div style='color: white; font-size: 3.5rem; font-weight: 800; margin-bottom: 0.5rem;'>
-                            {doc_score*100:.1f}%
+                            {similarity*100:.1f}%
                         </div>
                         <div style='color: rgba(255,255,255,0.9); font-size: 1.2rem; font-weight: 600; 
                                     letter-spacing: 2px; margin-bottom: 0.5rem;'>
@@ -859,16 +864,16 @@ elif analysis_type == "📁 Document Similarity":
                     </div>
                     """, unsafe_allow_html=True)
                 st.markdown("<br>", unsafe_allow_html=True)
-                perf_cols = st.columns(3)
+                perf_cols = st.columns(2)
                 with perf_cols[0]:
                     st.markdown(f"""
                     <div style='background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
                                 padding: 1.5rem; border-radius: 15px; border-left: 4px solid #667eea;'>
                         <div style='color: #667eea; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem;'>
-                            F1 SCORE
+                            SIMILARITY SCORE
                         </div>
                         <div style='font-size: 2rem; font-weight: 800; color: #ffffff;'>
-                            {doc_score:.4f}
+                            {similarity:.4f}
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
@@ -877,143 +882,15 @@ elif analysis_type == "📁 Document Similarity":
                     <div style='background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
                                 padding: 1.5rem; border-radius: 15px; border-left: 4px solid #764ba2;'>
                         <div style='color: #764ba2; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem;'>
-                            WINDOW PAIRS
+                            LABEL
                         </div>
-                        <div style='font-size: 2rem; font-weight: 800; color: #ffffff;'>
-                            {shape['m']} × {shape['n']}
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                with perf_cols[2]:
-                    st.markdown(f"""
-                    <div style='background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
-                                padding: 1.5rem; border-radius: 15px; border-left: 4px solid #667eea;'>
-                        <div style='color: #667eea; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem;'>
-                            PROCESSING TIME
-                        </div>
-                        <div style='font-size: 2rem; font-weight: 800; color: #ffffff;'>
-                            {processing_time:.3f}s
+                        <div style='font-size: 1.5rem; font-weight: 800; color: #ffffff;'>
+                            {label}
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
                 st.markdown("<br>", unsafe_allow_html=True)
-                gauge_fig = create_similarity_gauge(doc_score, "Sliding Window + BERTScore", processing_time)
+                gauge_fig = create_similarity_gauge(similarity, label)
                 st.plotly_chart(gauge_fig, use_container_width=True)
-                st.markdown("""
-                <div style='background: linear-gradient(90deg, #667eea 0%, #764ba2 100%); 
-                            padding: 0.75rem; border-radius: 10px; margin: 1.5rem 0;'>
-                    <h3 style='color: white; margin: 0; font-size: 1.1rem;'> Precision / Recall / F1 Metrics</h3>
-                </div>
-                """, unsafe_allow_html=True)
-                if detail.get("symmetric", False):
-                    a2b, b2a = detail["AtoB"], detail["BtoA"]
-                    metric_cols = st.columns(2)
-                    with metric_cols[0]:
-                        st.markdown(f"""
-                        <div style='background: rgba(102, 126, 234, 0.05); padding: 1.5rem; border-radius: 12px; border: 2px solid #667eea;'>
-                            <div style='color: #667eea; font-weight: 600; margin-bottom: 1rem; font-size: 1.1rem;'>📄 Dokumen A → B</div>
-                            <div style='display: flex; justify-content: space-between; margin-bottom: 0.5rem;'>
-                                <span style='color: #ffffff;'>Precision:</span>
-                                <span style='font-weight: 700; color: #ffffff;'>{a2b['P']:.3f}</span>
-                            </div>
-                            <div style='display: flex; justify-content: space-between; margin-bottom: 0.5rem;'>
-                                <span style='color: #ffffff;'>Recall:</span>
-                                <span style='font-weight: 700; color: #ffffff;'>{a2b['R']:.3f}</span>
-                            </div>
-                            <div style='display: flex; justify-content: space-between; padding-top: 0.5rem; border-top: 2px solid #667eea;'>
-                                <span style='color: #667eea; font-weight: 600;'>F1 Score:</span>
-                                <span style='font-weight: 800; color: #667eea; font-size: 1.3rem;'>{a2b['F1']:.3f}</span>
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    with metric_cols[1]:
-                        st.markdown(f"""
-                        <div style='background: rgba(118, 75, 162, 0.05); padding: 1.5rem; border-radius: 12px; border: 2px solid #764ba2;'>
-                            <div style='color: #764ba2; font-weight: 600; margin-bottom: 1rem; font-size: 1.1rem;'>📄 Dokumen B → A</div>
-                            <div style='display: flex; justify-content: space-between; margin-bottom: 0.5rem;'>
-                                <span style='color: #ffffff;'>Precision:</span>
-                                <span style='font-weight: 700; color: #ffffff;'>{b2a['P']:.3f}</span>
-                            </div>
-                            <div style='display: flex; justify-content: space-between; margin-bottom: 0.5rem;'>
-                                <span style='color: #ffffff;'>Recall:</span>
-                                <span style='font-weight: 700; color: #ffffff;'>{b2a['R']:.3f}</span>
-                            </div>
-                            <div style='display: flex; justify-content: space-between; padding-top: 0.5rem; border-top: 2px solid #764ba2;'>
-                                <span style='color: #764ba2; font-weight: 600;'>F1 Score:</span>
-                                <span style='font-weight: 800; color: #764ba2; font-size: 1.3rem;'>{b2a['F1']:.3f}</span>
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                else:
-                    a2b = detail["AtoB"]
-                    st.markdown(f"""
-                    <div style='background: rgba(102, 126, 234, 0.05); padding: 1.5rem; border-radius: 12px; border: 2px solid #667eea;'>
-                        <div style='color: #667eea; font-weight: 600; margin-bottom: 1rem; font-size: 1.1rem;'>📄 Dokumen A → B</div>
-                        <div style='display: flex; justify-content: space-between; margin-bottom: 0.5rem;'>
-                            <span style='color: #ffffff;'>Precision:</span>
-                            <span style='font-weight: 700; color: #ffffff;'>{a2b['P']:.3f}</span>
-                        </div>
-                        <div style='display: flex; justify-content: space-between; margin-bottom: 0.5rem;'>
-                            <span style='color: #ffffff;'>Recall:</span>
-                            <span style='font-weight: 700; color: #ffffff;'>{a2b['R']:.3f}</span>
-                        </div>
-                        <div style='display: flex; justify-content: space-between; padding-top: 0.5rem; border-top: 2px solid #667eea;'>
-                            <span style='color: #667eea; font-weight: 600;'>F1 Score:</span>
-                            <span style='font-weight: 800; color: #667eea; font-size: 1.3rem;'>{a2b['F1']:.3f}</span>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                st.markdown("""
-                <div style='background: linear-gradient(90deg, #667eea 0%, #764ba2 100%); 
-                            padding: 0.75rem; border-radius: 10px; margin: 1.5rem 0;'>
-                    <h3 style='color: white; margin: 0; font-size: 1.1rem;'>🔎 Top Evidence Windows</h3>
-                </div>
-                """, unsafe_allow_html=True)
-                if top_evidence:
-                    for k, ev in enumerate(top_evidence, 1):
-                        score_color = "#f5576c" if ev['score'] >= 0.8 else "#fdcb6e" if ev['score'] >= 0.6 else "#38ef7d"
-                        st.markdown(f"""
-                        <div style='background: rgba(102, 126, 234, 0.03); padding: 1.25rem; border-radius: 12px; 
-                                    margin-bottom: 1rem; border-left: 5px solid {score_color};'>
-                            <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;'>
-                                <span style='font-weight: 700; color: #ffffff; font-size: 1.1rem;'>Evidence #{k}</span>
-                                <span style='background: {score_color}; color: white; padding: 0.25rem 0.75rem; 
-                                            border-radius: 20px; font-weight: 700; font-size: 0.9rem;'>
-                                    {ev['score']:.3f}
-                                </span>
-                            </div>
-                            <div style='background: white; padding: 0.75rem; border-radius: 8px; margin-bottom: 0.5rem; 
-                                        border: 1px solid #e2e8f0;'>
-                                <div style='color: #667eea; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;'>
-                                    Window A:
-                                </div>
-                                <div style='color: #000000; line-height: 1.6;'>{ev["windowA"]}</div>
-                            </div>
-                            <div style='background: white; padding: 0.75rem; border-radius: 8px; border: 1px solid #e2e8f0;'>
-                                <div style='color: #764ba2; font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem;'>
-                                    Window B:
-                                </div>
-                                <div style='color: #000000; line-height: 1.6;'>{ev["windowB"]}</div>
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                else:
-                    st.info("ℹTidak ada evidence (kemungkinan dokumen sangat pendek).")
 
 st.markdown("---")
-
-if st.session_state.performance_history:
-    with st.expander("Performance Analytics"):
-        perf_chart = create_performance_chart(st.session_state.performance_history)
-        if perf_chart:
-            st.plotly_chart(perf_chart, width="stretch")
-        df_perf = pd.DataFrame(st.session_state.performance_history)
-        st.markdown("### Performance Summary:")
-        if len(df_perf) > 0:
-            avg_time = df_perf['processing_time'].mean()
-            avg_similarity = df_perf['similarity'].mean()
-            summary_cols = st.columns(2)
-            with summary_cols[0]:
-                st.metric("Average Time", f"{avg_time:.3f}s")
-            with summary_cols[1]:
-                st.metric("Average Similarity", f"{avg_similarity:.3f}")

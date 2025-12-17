@@ -108,7 +108,6 @@ train_file = val_file = test_file = None
 
 df_train = df_val = df_test = None
 
-# uploader helper that checks size and reads
 def handle_upload(uploader, key, required_cols):
     f = uploader
     if not f:
