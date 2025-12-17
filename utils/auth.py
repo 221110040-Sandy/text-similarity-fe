@@ -79,7 +79,7 @@ def show_login_form():
             username = st.text_input("Username", placeholder="Masukkan username")
             password = st.text_input("Password", type="password", placeholder="Masukkan password")
             
-            submit = st.form_submit_button("Login", use_container_width=True)
+            submit = st.form_submit_button("Login", width='stretch')
             
             if submit:
                 if username and password:

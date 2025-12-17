@@ -77,10 +77,10 @@ st.markdown("<div class='admin-header'><h1>Admin Dashboard</h1></div>", unsafe_a
 
 col1, col2 = st.columns([1,1])
 with col1:
-    if st.button("Kembali ke Home", use_container_width=True):
+    if st.button("Kembali ke Home", width='stretch'):
         st.switch_page("app_frontend.py")
 with col2:
-    if st.button("Logout", use_container_width=True):
+    if st.button("Logout", width='stretch'):
         logout()
         st.success("Berhasil logout!")
         st.rerun()
@@ -235,7 +235,7 @@ for col, name, summary, df in zip((c1, c2, c3), ("Train", "Validation", "Test"),
         st.write(f"Max len (use P95): {summary['max_len']}")
         st.markdown("</div>", unsafe_allow_html=True)
         st.write("Sample rows:")
-        st.dataframe(df[[col_sent1, col_sent2, col_label]].head(5), use_container_width=True)
+        st.dataframe(df[[col_sent1, col_sent2, col_label]].head(5), width='stretch')
 
 st.markdown("---")
 

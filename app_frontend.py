@@ -150,7 +150,8 @@ def count_words(text):
     return len(str(text).split())
 
 def estimate_pages(text, words_per_page=250):
-    return round(count_words(text) / words_per_page, 1)
+    import math
+    return math.ceil(count_words(text) / words_per_page)
 
 def validate_document_length(text, max_pages=5):
     estimated_pages = estimate_pages(text)
@@ -282,19 +283,20 @@ def predict_similarity_api(text1: str, text2: str):
 def predict_document_api(doc1: str, doc2: str):
     try:
         payload = {
-            "sentence1": doc1,
-            "sentence2": doc2
+            "text_a": doc1,
+            "text_b": doc2
         }
         resp = requests.post(
             f"{API_BASE_URL}/document-similarity",
             json=payload,
-            timeout=120
+            timeout=300
         )
         if resp.status_code == 200:
             data = resp.json()
+            analysis = data.get("analysis", {})
             return {
-                "similarity": data.get("probability"),
-                "label": data.get("label", "")
+                "similarity": analysis.get("similarity_score"),
+                "label": analysis.get("similarity_label", "")
             }
         else:
             det = resp.json().get("detail", f"HTTP {resp.status_code}")
@@ -328,33 +330,34 @@ def create_similarity_gauge(similarity, label=""):
         bar_color = "#fdcb6e"
     else:
         bar_color = "#00b894"
+    
     fig = go.Figure(go.Indicator(
         mode = "gauge+number",
         value = similarity * 100,
-        domain = {'x': [0, 1], 'y': [0, 1]},
-        title = {
-            'text': f"<b style='font-size: 18px; color: #ffffff;'>Similarity Score (%)</b>",
-            'font': {'size': 16, 'color': '#ffffff', 'family': 'Inter, -apple-system, BlinkMacSystemFont, sans-serif'}
-        },
         number = {
-            'font': {'size': 56, 'color': bar_color, 'family': 'Inter, -apple-system, BlinkMacSystemFont, sans-serif'},
-            'suffix': '%'
+            'font': {'size': 64, 'color': bar_color, 'family': 'Inter, -apple-system, BlinkMacSystemFont, sans-serif'},
+            'suffix': '%',
+            'valueformat': '.1f'
         },
+        domain = {'x': [0, 1], 'y': [0, 1]},
         gauge = {
             'axis': {
-                'range': [None, 100], 
+                'range': [0, 100], 
                 'tickwidth': 2,
-                'tickcolor': '#cbd5e0',
-                'tickfont': {'size': 13, 'color': '#4a5568', 'family': 'Inter, sans-serif'}
+                'tickcolor': '#a0aec0',
+                'tickmode': 'array',
+                'tickvals': [0, 20, 40, 60, 80, 100],
+                'ticktext': ['0', '20', '40', '60', '80', '100'],
+                'tickfont': {'size': 14, 'color': '#a0aec0', 'family': 'Inter, sans-serif'}
             },
             'bar': {'color': bar_color, 'thickness': 0.35},
-            'bgcolor': 'white',
+            'bgcolor': 'rgba(255,255,255,0.1)',
             'borderwidth': 2,
-            'bordercolor': '#e2e8f0',
+            'bordercolor': '#4a5568',
             'steps': [
-                {'range': [0, 60], 'color': 'rgba(0, 184, 148, 0.15)'},
-                {'range': [60, 80], 'color': 'rgba(253, 203, 110, 0.15)'},
-                {'range': [80, 100], 'color': 'rgba(245, 87, 108, 0.15)'}
+                {'range': [0, 60], 'color': 'rgba(0, 184, 148, 0.25)'},
+                {'range': [60, 80], 'color': 'rgba(253, 203, 110, 0.25)'},
+                {'range': [80, 100], 'color': 'rgba(245, 87, 108, 0.25)'}
             ],
             'threshold': {
                 'line': {'color': bar_color, 'width': 5},
@@ -364,11 +367,11 @@ def create_similarity_gauge(similarity, label=""):
         }
     ))
     fig.update_layout(
-        height=350, 
+        height=400, 
         font={'color': "#ffffff", 'family': "Inter, sans-serif"},
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
-        margin=dict(l=20, r=20, t=80, b=20)
+        margin=dict(l=40, r=40, t=40, b=40)
     )
     return fig
 
@@ -412,33 +415,34 @@ st.sidebar.markdown("---")
 if 'selected_model' not in st.session_state:
     st.session_state.selected_model = 'manual'
 
-with st.sidebar:
-    st.markdown("### 🔄 Switch Model")
-    model_option = st.selectbox(
-        "Pilih model:",
-        ["manual", "colab"],
-        index=0 if st.session_state.selected_model == 'manual' else 1,
-        format_func=lambda x: "Base Model (manual)" if x == "manual" else "Retrain Model (colab)",
-        key="model_selector"
-    )
-    
-    if st.button("Ganti Model", use_container_width=True, type="secondary"):
-        with st.spinner(f"Switching to {model_option} model..."):
-            result = switch_model_api(model_option)
-            if result.get("success"):
-                st.session_state.selected_model = model_option
-                st.success(f"✅ Model switched to {model_option}")
-            else:
-                st.error(f"❌ {result.get('error', 'Failed to switch model')}")
+if is_logged_in():
+    with st.sidebar:
+        st.markdown("### 🔄 Switch Model")
+        model_option = st.selectbox(
+            "Pilih model:",
+            ["manual", "colab"],
+            index=0 if st.session_state.selected_model == 'manual' else 1,
+            format_func=lambda x: "Base Model (manual)" if x == "manual" else "Retrain Model (colab)",
+            key="model_selector"
+        )
+        
+        if st.button("Ganti Model", width='stretch', type="secondary"):
+            with st.spinner(f"Switching to {model_option} model..."):
+                result = switch_model_api(model_option)
+                if result.get("success"):
+                    st.session_state.selected_model = model_option
+                    st.success(f"✅ Model switched to {model_option}")
+                else:
+                    st.error(f"❌ {result.get('error', 'Failed to switch model')}")
 
 st.sidebar.markdown("---")
 
 with st.sidebar:
     if is_logged_in():
-        if st.button("Admin Panel", key="admin_sidebar_logged", use_container_width=True, type="primary"):
+        if st.button("Admin Panel", key="admin_sidebar_logged", width='stretch', type="primary"):
             st.switch_page("pages/admin_panel.py")
     else:
-        if st.button("Login Admin", key="admin_sidebar_guest", use_container_width=True):
+        if st.button("Login Admin", key="admin_sidebar_guest", width='stretch'):
             st.switch_page("pages/admin_panel.py")
     st.session_state.performance_history = []
 
@@ -447,15 +451,15 @@ if analysis_type == "📄 Text Similarity":
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("### 📝 Teks 1")
-        text1 = st.text_area("Masukkan teks pertama (maksimal 50 kata):", height=200, key="text1", 
+        text1 = st.text_area("Masukkan teks pertama (maksimal 30 kata):", height=200, key="text1", 
                             placeholder="Paste atau ketik teks pertama di sini...")
         if text1:
             word_count1 = len(text1.split())
             if word_count1 == 0:
                 st.error("Teks tidak boleh kosong")
                 st.session_state.text1_valid = False
-            elif word_count1 > 50:
-                st.error(f"Teks terlalu panjang: {word_count1} kata (maksimal 50 kata)")
+            elif word_count1 > 30:
+                st.error(f"Teks terlalu panjang: {word_count1} kata (maksimal 30 kata)")
                 st.session_state.text1_valid = False
             else:
                 is_valid1, msg1 = validate_document_length(text1)
@@ -469,15 +473,15 @@ if analysis_type == "📄 Text Similarity":
             st.session_state.text1_valid = False
     with col2:
         st.markdown("### 📝 Teks 2")
-        text2 = st.text_area("Masukkan teks kedua (maksimal 50 kata):", height=200, key="text2",
+        text2 = st.text_area("Masukkan teks kedua (maksimal 30 kata):", height=200, key="text2",
                             placeholder="Paste atau ketik teks kedua di sini...")
         if text2:
             word_count2 = len(text2.split())
             if word_count2 == 0:
                 st.error("Teks tidak boleh kosong")
                 st.session_state.text2_valid = False
-            elif word_count2 > 50:
-                st.error(f"Teks terlalu panjang: {word_count2} kata (maksimal 50 kata)")
+            elif word_count2 > 30:
+                st.error(f"Teks terlalu panjang: {word_count2} kata (maksimal 30 kata)")
                 st.session_state.text2_valid = False
             else:
                 is_valid2, msg2 = validate_document_length(text2)
@@ -493,7 +497,7 @@ if analysis_type == "📄 Text Similarity":
     text_button_disabled = not both_texts_valid
     if not both_texts_valid:
         if not st.session_state.get('text1_valid', False) and not st.session_state.get('text2_valid', False):
-            st.info("ℹMasukkan kedua teks yang valid untuk mulai analisis (maksimal 50 kata per teks)")
+            st.info("ℹMasukkan kedua teks yang valid untuk mulai analisis (maksimal 30 kata per teks)")
         elif not st.session_state.get('text1_valid', False):
             st.warning("Teks 1 belum valid atau belum diisi")
         elif not st.session_state.get('text2_valid', False):
@@ -504,7 +508,7 @@ if analysis_type == "📄 Text Similarity":
             "Cek Plagiarisme / Kesamaan", 
             type="primary",
             disabled=text_button_disabled,
-            use_container_width=True
+            width='stretch'
         )
         if analyze_button:
             if not text1 or not text2:
@@ -523,50 +527,8 @@ if analysis_type == "📄 Text Similarity":
                         'label': label
                     })
                     st.markdown("---")
-                    st.markdown("""
-                    <div style='text-align: center; padding: 1rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                                border-radius: 15px; margin-bottom: 2rem;'>
-                        <h2 style='color: white; margin: 0;'>Hasil Analisis Kesamaan</h2>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    col_space1, col_main, col_space2 = st.columns([1, 2, 1])
-                    with col_main:
-                        # Use label from backend response
-                        label_lower = label.lower() if label else ""
-                        if "sangat mirip" in label_lower or "identik" in label_lower:
-                            bg_color = "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)"
-                            status_icon = ""
-                            status_desc = "Terdeteksi kemiripan sangat tinggi"
-                        elif "mirip" in label_lower:
-                            bg_color = "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)"
-                            status_icon = ""
-                            status_desc = "Terdeteksi kemiripan sedang"
-                        elif "berbeda" in label_lower:
-                            bg_color = "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)"
-                            status_icon = ""
-                            status_desc = "Tidak terdeteksi kemiripan signifikan"
-                        else:
-                            bg_color = "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
-                            status_icon = ""
-                            status_desc = label
-                        status_text = label.upper() if label else "HASIL ANALISIS"
-                        st.markdown(f"""
-                        <div style='background: {bg_color}; padding: 2.5rem; border-radius: 20px; 
-                                    text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.3);'>
-                            <div style='font-size: 4rem; margin-bottom: 0.5rem;'>{status_icon}</div>
-                            <div style='color: white; font-size: 3.5rem; font-weight: 800; margin-bottom: 0.5rem;'>
-                                {similarity*100:.1f}%
-                            </div>
-                            <div style='color: rgba(255,255,255,0.9); font-size: 1.2rem; font-weight: 600; 
-                                        letter-spacing: 2px; margin-bottom: 0.5rem;'>
-                                {status_text}
-                            </div>
-                            <div style='color: rgba(255,255,255,0.8); font-size: 0.95rem;'>
-                                {status_desc}
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.markdown("<h2 style='text-align: center;'>Hasil Analisis Kesamaan</h2>", unsafe_allow_html=True)
+                    
                     perf_cols = st.columns(2)
                     with perf_cols[0]:
                         st.markdown(f"""
@@ -592,21 +554,10 @@ if analysis_type == "📄 Text Similarity":
                             </div>
                         </div>
                         """, unsafe_allow_html=True)
+                    
                     st.markdown("<br>", unsafe_allow_html=True)
                     gauge_fig = create_similarity_gauge(similarity, label)
-                    st.plotly_chart(gauge_fig, use_container_width=True)
-                    st.markdown("## Text Statistics")
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.markdown("#### 📄 Teks 1")
-                        stats1 = get_text_statistics(text1)
-                        for key, value in stats1.items():
-                            st.metric(key.replace('_', ' ').title(), value)
-                    with col2:
-                        st.markdown("#### 📄 Teks 2") 
-                        stats2 = get_text_statistics(text2)
-                        for key, value in stats2.items():
-                            st.metric(key.replace('_', ' ').title(), value)
+                    st.plotly_chart(gauge_fig, width='stretch')
 
 elif analysis_type == "📁 Document Similarity":
     st.markdown("## Document Similarity Analysis")
@@ -808,89 +759,51 @@ elif analysis_type == "📁 Document Similarity":
             st.warning("Dokumen 1 belum valid atau belum di-upload")
         elif not st.session_state.get('doc2_valid', False):
             st.warning("Dokumen 2 belum valid atau belum di-upload")
-    if st.button("Cek Plagiarisme / Kesamaan", type="primary", disabled=button_disabled, use_container_width=True):
-        if not doc1_content or not doc2_content:
-            st.error("Mohon upload kedua dokumen yang valid!")
-        else:
-            with st.spinner("Menganalisis dokumen..."):
-                    result = predict_document_api(doc1_content, doc2_content)
-            if "error" in result:
-                st.error(f"{result['error']}")
+    col_center = st.columns([1, 2, 1])[1]
+    with col_center:
+        doc_analyze_button = st.button("Cek Plagiarisme / Kesamaan", type="primary", disabled=button_disabled, width='stretch')
+        if doc_analyze_button:
+            if not doc1_content or not doc2_content:
+                st.error("Mohon upload kedua dokumen yang valid!")
             else:
-                similarity = result["similarity"]
-                label = result["label"]
-                st.markdown("---")
-                st.markdown("""
-                <div style='text-align: center; padding: 1rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                            border-radius: 15px; margin-bottom: 2rem;'>
-                    <h2 style='color: white; margin: 0;'>Hasil Analisis Dokumen</h2>
-                </div>
-                """, unsafe_allow_html=True)
-                col_space1, col_main, col_space2 = st.columns([1, 2, 1])
-                with col_main:
-                    # Use label from backend response
-                    label_lower = label.lower() if label else ""
-                    if "sangat mirip" in label_lower or "identik" in label_lower:
-                        bg_color = "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)"
-                        status_icon = ""
-                        status_desc = "Kemiripan sangat tinggi - potensi plagiarisme"
-                    elif "mirip" in label_lower:
-                        bg_color = "linear-gradient(135deg, #ffeaa7 0%, #fdcb6e 100%)"
-                        status_icon = ""
-                        status_desc = "Kemiripan cukup tinggi - perlu verifikasi"
-                    elif "berbeda" in label_lower:
-                        bg_color = "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)"
-                        status_icon = ""
-                        status_desc = "Tidak terdeteksi plagiarisme signifikan"
-                    else:
-                        bg_color = "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
-                        status_icon = ""
-                        status_desc = label
-                    status_text = label.upper() if label else "HASIL ANALISIS"
-                    st.markdown(f"""
-                    <div style='background: {bg_color}; padding: 2.5rem; border-radius: 20px; 
-                                text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.3);'>
-                        <div style='font-size: 4rem; margin-bottom: 0.5rem;'>{status_icon}</div>
-                        <div style='color: white; font-size: 3.5rem; font-weight: 800; margin-bottom: 0.5rem;'>
-                            {similarity*100:.1f}%
+                with st.spinner("Menganalisis dokumen..."):
+                        result = predict_document_api(doc1_content, doc2_content)
+                if "error" in result:
+                    st.error(f"{result['error']}")
+                else:
+                    similarity = result["similarity"]
+                    label = result["label"]
+                    st.markdown("---")
+                    st.markdown("<h2 style='text-align: center;'>Hasil Analisis Dokumen</h2>", unsafe_allow_html=True)
+                    
+                    perf_cols = st.columns(2)
+                    with perf_cols[0]:
+                        st.markdown(f"""
+                        <div style='background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+                                    padding: 1.5rem; border-radius: 15px; border-left: 4px solid #667eea;'>
+                            <div style='color: #667eea; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem;'>
+                                SIMILARITY SCORE
+                            </div>
+                            <div style='font-size: 2rem; font-weight: 800; color: #ffffff;'>
+                                {similarity:.4f}
+                            </div>
                         </div>
-                        <div style='color: rgba(255,255,255,0.9); font-size: 1.2rem; font-weight: 600; 
-                                    letter-spacing: 2px; margin-bottom: 0.5rem;'>
-                            {status_text}
+                        """, unsafe_allow_html=True)
+                    with perf_cols[1]:
+                        st.markdown(f"""
+                        <div style='background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+                                    padding: 1.5rem; border-radius: 15px; border-left: 4px solid #764ba2;'>
+                            <div style='color: #764ba2; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem;'>
+                                LABEL
+                            </div>
+                            <div style='font-size: 1.5rem; font-weight: 800; color: #ffffff;'>
+                                {label}
+                            </div>
                         </div>
-                        <div style='color: rgba(255,255,255,0.8); font-size: 0.95rem;'>
-                            {status_desc}
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                st.markdown("<br>", unsafe_allow_html=True)
-                perf_cols = st.columns(2)
-                with perf_cols[0]:
-                    st.markdown(f"""
-                    <div style='background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
-                                padding: 1.5rem; border-radius: 15px; border-left: 4px solid #667eea;'>
-                        <div style='color: #667eea; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem;'>
-                            SIMILARITY SCORE
-                        </div>
-                        <div style='font-size: 2rem; font-weight: 800; color: #ffffff;'>
-                            {similarity:.4f}
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                with perf_cols[1]:
-                    st.markdown(f"""
-                    <div style='background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
-                                padding: 1.5rem; border-radius: 15px; border-left: 4px solid #764ba2;'>
-                        <div style='color: #764ba2; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem;'>
-                            LABEL
-                        </div>
-                        <div style='font-size: 1.5rem; font-weight: 800; color: #ffffff;'>
-                            {label}
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                st.markdown("<br>", unsafe_allow_html=True)
-                gauge_fig = create_similarity_gauge(similarity, label)
-                st.plotly_chart(gauge_fig, use_container_width=True)
+                        """, unsafe_allow_html=True)
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    gauge_fig = create_similarity_gauge(similarity, label)
+                    st.plotly_chart(gauge_fig, width='stretch')
 
 st.markdown("---")
