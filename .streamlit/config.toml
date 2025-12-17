@@ -4,3 +4,9 @@ maxUploadSize = 25
 [logger]
 level = "info"
 
+[ui]
+hideTopBar = true
+
+
+[theme]
+base = "dark"
