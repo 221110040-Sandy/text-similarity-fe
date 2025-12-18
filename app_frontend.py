@@ -269,7 +269,8 @@ def predict_similarity_api(text1: str, text2: str):
             resp = response.json()
             normalized = {
                 "similarity": resp.get("probability"),
-                "label": resp.get("label", "")
+                "label": resp.get("label", ""),
+                "processing_time": resp.get("processing_time", 0)
             }
             return normalized
         else:
@@ -296,7 +297,8 @@ def predict_document_api(doc1: str, doc2: str):
             analysis = data.get("analysis", {})
             return {
                 "similarity": analysis.get("similarity_score"),
-                "label": analysis.get("similarity_label", "")
+                "label": analysis.get("similarity_label", ""),
+                "processing_time": data.get("processing_time", 0)
             }
         else:
             det = resp.json().get("detail", f"HTTP {resp.status_code}")
@@ -522,14 +524,16 @@ if analysis_type == "📄 Text Similarity":
                 else:
                     similarity = result['similarity']
                     label = result['label']
+                    processing_time = result['processing_time']
                     st.session_state.performance_history.append({
                         'similarity': similarity,
-                        'label': label
+                        'label': label,
+                        'processing_time': processing_time
                     })
                     st.markdown("---")
                     st.markdown("<h2 style='text-align: center;'>Hasil Analisis Kesamaan</h2>", unsafe_allow_html=True)
                     
-                    perf_cols = st.columns(2)
+                    perf_cols = st.columns(3)
                     with perf_cols[0]:
                         st.markdown(f"""
                         <div style='background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
@@ -554,10 +558,22 @@ if analysis_type == "📄 Text Similarity":
                             </div>
                         </div>
                         """, unsafe_allow_html=True)
+                    with perf_cols[2]:
+                        st.markdown(f"""
+                        <div style='background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+                                    padding: 1.5rem; border-radius: 15px; border-left: 4px solid #28a745;'>
+                            <div style='color: #28a745; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem;'>
+                                PROCESSING TIME
+                            </div>
+                            <div style='font-size: 2rem; font-weight: 800; color: #ffffff;'>
+                                {processing_time:.2f}s
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
                     
                     st.markdown("<br>", unsafe_allow_html=True)
                     gauge_fig = create_similarity_gauge(similarity, label)
-                    st.plotly_chart(gauge_fig, width='stretch')
+                    st.plotly_chart(gauge_fig, use_container_width=True)
 
 elif analysis_type == "📁 Document Similarity":
     st.markdown("## Document Similarity Analysis")
@@ -773,10 +789,11 @@ elif analysis_type == "📁 Document Similarity":
                 else:
                     similarity = result["similarity"]
                     label = result["label"]
+                    processing_time = result["processing_time"]
                     st.markdown("---")
                     st.markdown("<h2 style='text-align: center;'>Hasil Analisis Dokumen</h2>", unsafe_allow_html=True)
                     
-                    perf_cols = st.columns(2)
+                    perf_cols = st.columns(3)
                     with perf_cols[0]:
                         st.markdown(f"""
                         <div style='background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
@@ -801,9 +818,21 @@ elif analysis_type == "📁 Document Similarity":
                             </div>
                         </div>
                         """, unsafe_allow_html=True)
+                    with perf_cols[2]:
+                        st.markdown(f"""
+                        <div style='background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+                                    padding: 1.5rem; border-radius: 15px; border-left: 4px solid #28a745;'>
+                            <div style='color: #28a745; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem;'>
+                                PROCESSING TIME
+                            </div>
+                            <div style='font-size: 2rem; font-weight: 800; color: #ffffff;'>
+                                {processing_time:.2f}s
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
                     
                     st.markdown("<br>", unsafe_allow_html=True)
                     gauge_fig = create_similarity_gauge(similarity, label)
-                    st.plotly_chart(gauge_fig, width='stretch')
+                    st.plotly_chart(gauge_fig, use_container_width=True)
 
 st.markdown("---")
