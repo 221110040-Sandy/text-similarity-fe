@@ -451,6 +451,45 @@ if st.session_state.job_started:
         if best is not None:
             st.write(f"Best loss: `{best:.4f}`")
 
+        logs_list = s.get("logs", [])
+        is_retraining = any("Retraining Final Model" in log for log in logs_list)
+        if is_retraining and status_text not in ["COMPLETED", "FAILED", "FULL TRAIN"]:
+            st.markdown("---")
+            st.markdown("""
+            <style>
+            .spinner-container {
+                display: flex;
+                align-items: center;
+                gap: 15px;
+                padding: 20px;
+                background: rgba(255, 255, 255, 0.05);
+                border-radius: 10px;
+                margin: 10px 0;
+            }
+            .spinner {
+                width: 40px;
+                height: 40px;
+                border: 4px solid rgba(102, 126, 234, 0.3);
+                border-top: 4px solid #667eea;
+                border-radius: 50%;
+                animation: spin 1s linear infinite;
+            }
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+            .spinner-text {
+                font-size: 18px;
+                font-weight: 600;
+                color: #667eea;
+            }
+            </style>
+            <div class="spinner-container">
+                <div class="spinner"></div>
+                <span class="spinner-text">Training Final Model...</span>
+            </div>
+            """, unsafe_allow_html=True)
+
         st.subheader("Logs")
         for log in s.get("logs", [])[::-1]:
             st.code(log)
