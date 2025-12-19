@@ -619,9 +619,10 @@ elif analysis_type == "📁 Document Similarity":
                             if is_valid1:
                                 st.success("DOCX berhasil diproses!")
                                 st.success(msg1)
+                                st.session_state.doc1_content = doc1_content
                                 with st.expander("Preview Dokumen 1 (dari DOCX)"):
                                     st.text_area("Content:", create_docx_preview(doc1_content), 
-                                               height=150, disabled=True, key="preview1_docx")
+                                               height=150, disabled=True, key=f"preview1_docx_{uploaded_file1.name}_{uploaded_file1.size}")
                                 st.session_state.doc1_valid = True
                             else:
                                 st.error(msg1)
@@ -649,9 +650,10 @@ elif analysis_type == "📁 Document Similarity":
                             if is_valid1:
                                 st.success("PDF berhasil diproses!")
                                 st.success(msg1)
+                                st.session_state.doc1_content = doc1_content
                                 with st.expander("Preview Dokumen 1 (dari PDF)"):
                                     st.text_area("Content:", create_pdf_preview(doc1_content), 
-                                               height=150, disabled=True, key="preview1")
+                                               height=150, disabled=True, key=f"preview1_pdf_{uploaded_file1.name}_{uploaded_file1.size}")
                                 st.session_state.doc1_valid = True
                             else:
                                 st.error(msg1)
@@ -670,9 +672,10 @@ elif analysis_type == "📁 Document Similarity":
                 if is_valid1:
                     st.success("File TXT berhasil dimuat!")
                     st.success(msg1)
+                    st.session_state.doc1_content = doc1_content
                     with st.expander("Preview Dokumen 1"):
                         st.text_area("Content:", doc1_content[:500] + "..." if len(doc1_content) > 500 else doc1_content, 
-                                   height=150, disabled=True, key="preview1_txt")
+                                   height=150, disabled=True, key=f"preview1_txt_{uploaded_file1.name}_{uploaded_file1.size}")
                     st.session_state.doc1_valid = True
                 else:
                     st.error(msg1)
@@ -705,9 +708,10 @@ elif analysis_type == "📁 Document Similarity":
                             if is_valid2:
                                 st.success("DOCX berhasil diproses!")
                                 st.success(msg2)
+                                st.session_state.doc2_content = doc2_content
                                 with st.expander("Preview Dokumen 2 (dari DOCX)"):
                                     st.text_area("Content:", create_docx_preview(doc2_content), 
-                                               height=150, disabled=True, key="preview2_docx")
+                                               height=150, disabled=True, key=f"preview2_docx_{uploaded_file2.name}_{uploaded_file2.size}")
                                 st.session_state.doc2_valid = True
                             else:
                                 st.error(msg2)
@@ -735,9 +739,10 @@ elif analysis_type == "📁 Document Similarity":
                             if is_valid2:
                                 st.success("PDF berhasil diproses!")
                                 st.success(msg2)
+                                st.session_state.doc2_content = doc2_content
                                 with st.expander("Preview Dokumen 2 (dari PDF)"):
                                     st.text_area("Content:", create_pdf_preview(doc2_content), 
-                                               height=150, disabled=True, key="preview2")
+                                               height=150, disabled=True, key=f"preview2_pdf_{uploaded_file2.name}_{uploaded_file2.size}")
                                 st.session_state.doc2_valid = True
                             else:
                                 st.error(msg2)
@@ -756,9 +761,10 @@ elif analysis_type == "📁 Document Similarity":
                 if is_valid2:
                     st.success("File TXT berhasil dimuat!")
                     st.success(msg2)
+                    st.session_state.doc2_content = doc2_content
                     with st.expander("Preview Dokumen 2"):
                         st.text_area("Content:", doc2_content[:500] + "..." if len(doc2_content) > 500 else doc2_content, 
-                                   height=150, disabled=True, key="preview2_txt")
+                                   height=150, disabled=True, key=f"preview2_txt_{uploaded_file2.name}_{uploaded_file2.size}")
                     st.session_state.doc2_valid = True
                 else:
                     st.error(msg2)
@@ -779,6 +785,9 @@ elif analysis_type == "📁 Document Similarity":
     with col_center:
         doc_analyze_button = st.button("Cek Plagiarisme / Kesamaan", type="primary", disabled=button_disabled, width='stretch')
         if doc_analyze_button:
+            # Get content from session state
+            doc1_content = st.session_state.get('doc1_content', '')
+            doc2_content = st.session_state.get('doc2_content', '')
             if not doc1_content or not doc2_content:
                 st.error("Mohon upload kedua dokumen yang valid!")
             else:
