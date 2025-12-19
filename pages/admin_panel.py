@@ -9,8 +9,14 @@ import time
 import os
 from dotenv import load_dotenv
 from sklearn.model_selection import train_test_split
+from transformers import BertTokenizer
 
 load_dotenv()
+
+# Initialize BERT tokenizer for token counting
+@st.cache_resource
+def get_tokenizer():
+    return BertTokenizer.from_pretrained('bert-base-uncased')
 
 sys.path.append(str(Path(__file__).parent.parent))
 from utils.auth import initialize_auth_state, require_auth, logout
@@ -44,11 +50,11 @@ def safe_read_csv(uploaded_file, required_cols):
         try:
             df = read_csv_strip_quotes(uploaded_file)
         except Exception:
-            return None, False, "Tidak dapat membaca CSV (format/encoding tidak dikenali)."
+            return None, False, "Cannot read CSV (format/encoding not recognized)."
     cols = list(df.columns)
     missing = [c for c in required_cols if c not in cols]
     if missing:
-        return df, False, f"Kolom wajib hilang → {', '.join(missing)}"
+        return df, False, f"Required columns missing → {', '.join(missing)}"
     return df, True, None
 
 st.set_page_config(page_title="Admin Panel", layout="wide", initial_sidebar_state="collapsed")
@@ -77,12 +83,12 @@ st.markdown("<div class='admin-header'><h1>Admin Dashboard</h1></div>", unsafe_a
 
 col1, col2 = st.columns([1,1])
 with col1:
-    if st.button("Kembali ke Home", width='stretch'):
+    if st.button("Back to Home", width='stretch'):
         st.switch_page("app_frontend.py")
 with col2:
     if st.button("Logout", width='stretch'):
         logout()
-        st.success("Berhasil logout!")
+        st.success("Logged out successfully!")
         st.rerun()
 
 st.markdown("---")
@@ -93,15 +99,15 @@ MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB
 st.markdown("### Upload CSV (Train / Val / Test)")
 col_map, _ = st.columns([2,1])
 with col_map:
-    st.markdown("**Mapping kolom (sesuaikan dengan header CSV kamu).**")
-    st.warning("Pastikan bahwa header untuk ketiga dataset (Train, Validation, Test) memiliki header yang sama persis.")
-    col_sent1 = st.text_input("Nama header untuk sentence1", value="sentence1")
-    col_sent2 = st.text_input("Nama header untuk sentence2", value="sentence2")
-    col_label = st.text_input("Nama header untuk label", value="label")
+    st.markdown("**Column mapping (adjust to your CSV headers).**")
+    st.warning("Make sure all three datasets (Train, Validation, Test) have the exact same headers.")
+    col_sent1 = st.text_input("Header name for sentence1", value="sentence1")
+    col_sent2 = st.text_input("Header name for sentence2", value="sentence2")
+    col_label = st.text_input("Header name for label", value="label")
 
 required_cols = [col_sent1, col_sent2, col_label]
 
-st.info("Train & Validation wajib. Test optional (jika kosong akan di-split dari Train). File max 25MB per file.")
+st.info("Train & Validation required. Test optional (if empty, will be split from Train). Max 25MB per file.")
 
 col_train, col_val, col_test = st.columns(3)
 
@@ -126,7 +132,7 @@ with col_train:
     train_err = None
     if train_file:
         if train_file.size > MAX_UPLOAD_BYTES:
-            st.error("File terlalu besar — maksimal 25 MB")
+            st.error("File too large — maximum 25 MB")
             train_file = None
             train_valid = False
         else:
@@ -136,11 +142,11 @@ with col_train:
             if df_train is not None and train_valid:
                 st.metric("Rows", len(df_train))
                 st.metric("Columns", len(df_train.columns))
-                st.success("Dokumen valid — semua kolom ditemukan")
+                st.success("Document valid — all columns found")
             elif df_train is not None and not train_valid:
-                st.error("Kolom wajib hilang atau header tidak sesuai: " + ", ".join([c for c in required_cols if c not in list(df_train.columns)]))
+                st.error("Required columns missing or headers mismatch: " + ", ".join([c for c in required_cols if c not in list(df_train.columns)]))
     else:
-        st.error("Train CSV wajib diupload")
+        st.error("Train CSV is required")
 
 with col_val:
     st.subheader("Validation CSV (required)")
@@ -149,7 +155,7 @@ with col_val:
     val_err = None
     if val_file:
         if val_file.size > MAX_UPLOAD_BYTES:
-            st.error("File terlalu besar — maksimal 25 MB")
+            st.error("File too large — maximum 25 MB")
             val_file = None
             val_valid = False
         else:
@@ -159,11 +165,11 @@ with col_val:
             if df_val is not None and val_valid:
                 st.metric("Rows", len(df_val))
                 st.metric("Columns", len(df_val.columns))
-                st.success("Dokumen valid — semua kolom ditemukan")
+                st.success("Document valid — all columns found")
             elif df_val is not None and not val_valid:
-                st.error("Kolom wajib hilang atau header tidak sesuai: " + ", ".join([c for c in required_cols if c not in list(df_val.columns)]))
+                st.error("Required columns missing or headers mismatch: " + ", ".join([c for c in required_cols if c not in list(df_val.columns)]))
     else:
-        st.error("Validation CSV wajib diupload")
+        st.error("Validation CSV is required")
 
 with col_test:
     st.subheader("Test CSV (optional)")
@@ -172,7 +178,7 @@ with col_test:
     test_err = None
     if test_file:
         if test_file.size > MAX_UPLOAD_BYTES:
-            st.error("File terlalu besar — maksimal 25 MB")
+            st.error("File too large — maximum 25 MB")
             test_file = None
             test_valid = False
         else:
@@ -182,11 +188,11 @@ with col_test:
             if df_test is not None and test_valid:
                 st.metric("Rows", len(df_test))
                 st.metric("Columns", len(df_test.columns))
-                st.success("Dokumen valid — semua kolom ditemukan")
+                st.success("Document valid — all columns found")
             elif df_test is not None and not test_valid:
-                st.error("Kolom wajib hilang atau header tidak sesuai: " + ", ".join([c for c in required_cols if c not in list(df_test.columns)]))
+                st.error("Required columns missing or headers mismatch: " + ", ".join([c for c in required_cols if c not in list(df_test.columns)]))
     else:
-        st.info("Test CSV kosong — akan di-split dari Train saat proses dimulai jika diperlukan")
+        st.info("Test CSV empty — will be split from Train when process starts with 80:20 ratio")
 
 st.markdown("---")
 
@@ -205,10 +211,12 @@ if df_train is not None and train_valid:
         label_1 = int(vc.get(1, 0))
         pct_0 = round(label_0 / total * 100, 2) if total > 0 else 0.0
         pct_1 = round(label_1 / total * 100, 2) if total > 0 else 0.0
-        # Calculate word count (not character count)
-        combined = (df[col_sent1].fillna("").astype(str) + " " + df[col_sent2].fillna("").astype(str)).str.split().str.len()
-        qs = combined.quantile([0.25, 0.5, 0.75, 0.95, 1.0]).to_dict()
-        qtable = {25: int(qs.get(0.25, 0)), 50: int(qs.get(0.5, 0)), 75: int(qs.get(0.75, 0)), 95: int(qs.get(0.95, 0)), 100: int(qs.get(1.0, 0))}
+        # Calculate token count using BERT tokenizer
+        tokenizer = get_tokenizer()
+        combined = (df[col_sent1].fillna("").astype(str) + " " + df[col_sent2].fillna("").astype(str))
+        token_counts = combined.apply(lambda x: len(tokenizer.encode(x, add_special_tokens=True)))
+        qs = token_counts.quantile([0.25, 0.5, 0.75, 0.95, 0.96, 0.97, 0.98, 0.99, 1.0]).to_dict()
+        qtable = {25: int(qs.get(0.25, 0)), 50: int(qs.get(0.5, 0)), 75: int(qs.get(0.75, 0)), 95: int(qs.get(0.95, 0)), 96: int(qs.get(0.96, 0)), 97: int(qs.get(0.97, 0)), 98: int(qs.get(0.98, 0)), 99: int(qs.get(0.99, 0)), 100: int(qs.get(1.0, 0))}
         max_len = qtable[95]
         return {"total": total, "s1_nonnull": s1_nonnull, "s2_nonnull": s2_nonnull, "label_nonnull": label_nonnull, "label_0": label_0, "label_1": label_1, "pct_0": pct_0, "pct_1": pct_1, "qtable": qtable, "max_len": max_len}
     train_summary = summarize_df(df_train)
@@ -232,9 +240,9 @@ for col, name, summary, df in zip((c1, c2, c3), ("Train", "Validation", "Test"),
         st.write(f"{col_label} non-null: {summary['label_nonnull']}")
         st.write(f"Label distribution: 0 = {summary['label_0']} ({summary['pct_0']}%), 1 = {summary['label_1']} ({summary['pct_1']}%)")
         qt = summary["qtable"]
-        qdf = pd.DataFrame({"percentile": ["P25","P50","P75","P95","P100"], "words": [qt[25], qt[50], qt[75], qt[95], qt[100]]})
+        qdf = pd.DataFrame({"percentile": ["P25","P50","P75","P95","P96","P97","P98","P99","P100"], "tokens": [qt[25], qt[50], qt[75], qt[95], qt[96], qt[97], qt[98], qt[99], qt[100]]})
         st.table(qdf)
-        st.write(f"Max words (use P95): {summary['max_len']}")
+        st.write(f"Max tokens (use P95): {summary['max_len']}")
         st.markdown("</div>", unsafe_allow_html=True)
         st.write("Sample rows:")
         st.dataframe(df[[col_sent1, col_sent2, col_label]].head(5), width='stretch')
@@ -242,38 +250,74 @@ for col, name, summary, df in zip((c1, c2, c3), ("Train", "Validation", "Test"),
 st.markdown("---")
 
 st.markdown("### Training Options")
-batch_size = st.radio("Batch size", options=[16,32,64,128], index=1)
+
+col_batch, col_maxlen = st.columns(2)
+
+with col_batch:
+    batch_size = st.radio("Batch size", options=[16,32,64,128,256,512], index=1)
+
+with col_maxlen:
+    # Build maxlen options from train percentiles
+    if train_summary is not None:
+        qt = train_summary["qtable"]
+        maxlen_options = {
+            f"P25 ({qt[25]} tokens)": qt[25],
+            f"P50 ({qt[50]} tokens)": qt[50],
+            f"P75 ({qt[75]} tokens)": qt[75],
+            f"P95 ({qt[95]} tokens)": qt[95],
+            f"P96 ({qt[96]} tokens)": qt[96],
+            f"P97 ({qt[97]} tokens)": qt[97],
+            f"P98 ({qt[98]} tokens)": qt[98],
+            f"P99 ({qt[99]} tokens)": qt[99],
+            f"P100 ({qt[100]} tokens)": qt[100],
+        }
+        selected_maxlen = st.radio("Max sequence length", options=list(maxlen_options.keys()), index=3)  # Default to P95
+        maxlen_value = maxlen_options[selected_maxlen]
+    else:
+        st.warning("Upload Train CSV to see maxlen options")
+        maxlen_value = 128  # Default fallback
 
 st.markdown("### Hyperband Configuration")
-st.info("ℹ️ **Note:** Nilai Attention akan otomatis dihitung sebagai BiLSTM × 2")
 
-col_bilstm, col_lr, col_drop, col_wd = st.columns(4)
+col_bilstm, col_attn, col_dense, col_lr, col_drop, col_wd = st.columns(6)
 
 with col_bilstm:
-    bilstm_count = st.number_input("Jumlah nilai BiLSTM", min_value=1, max_value=20, value=3, step=1, key="bilstm_count")
+    bilstm_count = st.number_input("Number of BiLSTM values", min_value=1, max_value=20, value=3, step=1, key="bilstm_count")
     bilstm_values = []
     for i in range(bilstm_count):
         v = st.number_input(f"BiLSTM value {i+1}", min_value=1, max_value=16384, value=64*(i+1), step=1, key=f"bilstm_v_{i}")
         bilstm_values.append(int(v))
-    # Calculate attention values (not displayed, just for backend)
-    attention_values = [v * 2 for v in bilstm_values]
+
+with col_attn:
+    attn_count = st.number_input("Number of Attention values", min_value=1, max_value=20, value=3, step=1, key="attn_count")
+    attention_values = []
+    for i in range(attn_count):
+        v = st.number_input(f"Attention value {i+1}", min_value=1, max_value=16384, value=128*(i+1), step=1, key=f"attn_v_{i}")
+        attention_values.append(int(v))
+
+with col_dense:
+    dense_count = st.number_input("Number of Dense values", min_value=1, max_value=20, value=3, step=1, key="dense_count")
+    dense_values = []
+    for i in range(dense_count):
+        v = st.number_input(f"Dense value {i+1}", min_value=1, max_value=16384, value=16*(i+1), step=1, key=f"dense_v_{i}")
+        dense_values.append(int(v))
 
 with col_lr:
-    lr_count = st.number_input("Jumlah nilai learning rate", min_value=1, max_value=20, value=3, step=1, key="lr_count")
+    lr_count = st.number_input("Number of learning rate values", min_value=1, max_value=20, value=3, step=1, key="lr_count")
     lr_values = []
     for i in range(lr_count):
         v = st.number_input(f"LR value {i+1}", value=1e-4 * (10**i) if i>0 else 1e-4, format="%.8g", key=f"lr_v_{i}")
         lr_values.append(float(v))
 
 with col_drop:
-    drop_count = st.number_input("Jumlah nilai dropout", min_value=1, max_value=20, value=3, step=1, key="drop_count")
+    drop_count = st.number_input("Number of dropout values", min_value=1, max_value=20, value=3, step=1, key="drop_count")
     drop_values = []
     for i in range(drop_count):
         v = st.number_input(f"Dropout value {i+1}", min_value=0.0, max_value=1.0, value=0.1 + 0.1*i, step=0.01, format="%.2f", key=f"drop_v_{i}")
         drop_values.append(float(v))
 
 with col_wd:
-    wd_count = st.number_input("Jumlah nilai weight decay", min_value=1, max_value=20, value=2, step=1, key="wd_count")
+    wd_count = st.number_input("Number of weight decay values", min_value=1, max_value=20, value=2, step=1, key="wd_count")
     wd_values = []
     for i in range(wd_count):
         v = st.number_input(f"WD value {i+1}", value=1e-4 * (i+1), format="%.8g", key=f"wd_v_{i}")
@@ -281,23 +325,29 @@ with col_wd:
 
 st.markdown("---")
 
-hb_col3, hb_col4 = st.columns(2)
+hb_col3, hb_col4, hb_col5 = st.columns(3)
 with hb_col3:
     max_epochs = st.number_input("Max epochs (Hyperband)", min_value=1, value=5, step=1)
 with hb_col4:
     max_trials = st.number_input("Max trials (Hyperband)", min_value=1, value=5, step=1)
+with hb_col5:
+    pruner_factor = st.number_input("Pruner factor", min_value=1, value=1, step=1)
 
 st.markdown("---")
 
-st.markdown("### Sampling untuk Hyperband")
-samp_train_pct = st.slider("Persentase sampling dari train (%)", min_value=1, max_value=100, value=20)
-samp_val_pct = st.slider("Persentase sampling dari validation (%)", min_value=1, max_value=100, value=20)
-samp_test_pct = st.slider("Persentase sampling dari test (%)", min_value=1, max_value=100, value=20)
+st.markdown("### Sampling for Hyperband")
+samp_train_pct = st.slider("Sampling percentage from train (%)", min_value=1, max_value=100, value=20)
+samp_val_pct = st.slider("Sampling percentage from validation (%)", min_value=1, max_value=100, value=20)
+samp_test_pct = st.slider("Sampling percentage from test (%)", min_value=1, max_value=100, value=20)
 
 st.markdown("---")
 
-st.markdown("### Setelah Hyperband")
-full_training = st.radio("Lakukan full training setelah Hyperband?", options=["Ya","Tidak"], index=0)
+st.markdown("### After Hyperband")
+full_training = st.radio("Perform full training after Hyperband?", options=["Yes","No"], index=1)
+
+full_training_epochs = 10 
+if full_training == "Yes":
+    full_training_epochs = st.number_input("Full training epochs", min_value=1, value=10, step=1)
 
 any_uploaded = all([train_file is not None, val_file is not None])
 all_uploaded_valid = all([train_valid, val_valid]) and (not test_file or test_valid)
@@ -306,23 +356,23 @@ disabled = False
 reasons = []
 if not any_uploaded:
     disabled = True
-    reasons.append("Train dan Validation wajib diupload")
+    reasons.append("Train and Validation are required")
 if not all_uploaded_valid:
     disabled = True
-    reasons.append("Train/Validation/Test tidak valid (cek pesan di tiap kolom)")
+    reasons.append("Train/Validation/Test not valid (check message in each column)")
 
 if disabled:
-    st.info("Tidak dapat memulai proses: " + "; ".join(reasons))
+    st.info("Cannot start process: " + "; ".join(reasons))
 URL = os.getenv("API_BASE_URL", "https://desertlike-nonrecognized-keagan.ngrok-free.dev")
 API_URL = URL + "/find-hyperparam"
 API_TIMEOUT = 60
 if st.button(
-    "Mulai Training",
+    "Start Training",
     type="primary",
     disabled=disabled or st.session_state.job_running
 ):
     st.session_state.job_running = True
-    with st.spinner("Mengirim konfigurasi dan file ke backend..."):
+    with st.spinner("Sending configuration and files to backend..."):
 
         files = {
             "dataset_train": (train_file.name, train_file.getvalue(), "text/csv"),
@@ -336,16 +386,21 @@ if st.button(
             "header_col2": col_sent2,
             "header_label": col_label,
             "batch_size": int(batch_size),
+            "maxlen": int(maxlen_value),
             "bilstm_units": ",".join(map(str, bilstm_values)),
+            "attention_units": ",".join(map(str, attention_values)),
+            "dense_units": ",".join(map(str, dense_values)),
             "learning_rate": ",".join(map(str, lr_values)),
             "dropout_rate": ",".join(map(str, drop_values)),
             "weight_decay": ",".join(map(str, wd_values)),
             "max_epochs": int(max_epochs),
             "max_trials": int(max_trials),
+            "pruner_factor": int(pruner_factor),
             "sampling_train": int(samp_train_pct),
             "sampling_dev": int(samp_val_pct),
             "sampling_test": int(samp_test_pct),
-            "train_full": full_training == "Ya",
+            "train_full": full_training == "Yes",
+            "full_training_epochs": int(full_training_epochs),
         }
 
         try:
@@ -355,11 +410,11 @@ if st.button(
             st.session_state.job_started = True
             st.session_state.last_status = None
 
-            st.success("Job berhasil dikirim ke backend")
+            st.success("Job successfully sent to backend")
             st.rerun()
 
         except requests.RequestException as e:
-            st.error(f"Error saat memanggil API: {e}")
+            st.error(f"Error calling API: {e}")
 
 STATUS_URL = URL + "/status"
 
@@ -370,7 +425,7 @@ if st.session_state.job_started:
         s = resp.json()
         st.session_state.last_status = s
     except Exception as e:
-        st.error(f"Gagal ambil status: {e}")
+        st.error(f"Failed to get status: {e}")
         s = st.session_state.last_status
 
     if s:
@@ -391,7 +446,7 @@ if st.session_state.job_started:
             st.write(f"Trial {cur} / {total}")
         else:
             st.progress(0.0)
-            st.write(f"Trial {cur} (jumlah trial belum ditentukan)")
+            st.write(f"Trial {cur} (total trials not yet determined)")
 
         if best is not None:
             st.write(f"Best loss: `{best:.4f}`")
@@ -405,10 +460,10 @@ if st.session_state.job_started:
             st.session_state.job_started = False
 
             if status_text == "COMPLETED":
-                st.success("Training selesai 🎉")
+                st.success("Training completed 🎉")
                 st.json(s.get("result"))
             else:
-                st.error("Training gagal")
+                st.error("Training failed")
                 st.json(s.get("result"))
         else:
             time.sleep(5)

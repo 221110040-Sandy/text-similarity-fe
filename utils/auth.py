@@ -52,7 +52,7 @@ def require_auth():
             st.session_state.username = user
     
     if not is_logged_in():
-        st.warning("Login terlebih dahulu untuk mengakses halaman ini.")
+        st.warning("Please login first to access this page.")
         show_login_form()
         st.stop()
 
@@ -62,12 +62,12 @@ def show_login_form():
                 padding: 2rem; border-radius: 15px; margin: 2rem 0;'>
         <h2 style='color: white; text-align: center; margin-bottom: 1rem;'>Login Admin Panel</h2>
         <p style='color: rgba(255,255,255,0.9); text-align: center;'>
-            Silakan login untuk mengakses dashboard admin
+            Please login to access the admin dashboard
         </p>
     </div>
     """, unsafe_allow_html=True)
     
-    if st.button("Kembali ke Home"):
+    if st.button("Back to Home"):
         st.switch_page("app_frontend.py")
     
     st.markdown("<br>", unsafe_allow_html=True)
@@ -76,8 +76,8 @@ def show_login_form():
         col1, col2, col3 = st.columns([1, 2, 1])
         
         with col2:
-            username = st.text_input("Username", placeholder="Masukkan username")
-            password = st.text_input("Password", type="password", placeholder="Masukkan password")
+            username = st.text_input("Username", placeholder="Enter username")
+            password = st.text_input("Password", type="password", placeholder="Enter password")
             
             submit = st.form_submit_button("Login", width='stretch')
             
@@ -88,10 +88,10 @@ def show_login_form():
                         auth_token = hashlib.sha256(f"{username}_admin_secret".encode()).hexdigest()
                         st.query_params["auth_token"] = auth_token
                         st.query_params["user"] = username
-                        st.success("Login berhasil! Redirecting...")
+                        st.success("Login successful! Redirecting...")
                         st.rerun()
                     else:
-                        st.error("Username atau password salah!")
+                        st.error("Invalid username or password!")
                 else:
-                    st.warning("Mohon isi username dan password!")
+                    st.warning("Please enter username and password!")
 
