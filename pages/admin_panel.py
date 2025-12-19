@@ -94,6 +94,7 @@ st.markdown("### Upload CSV (Train / Val / Test)")
 col_map, _ = st.columns([2,1])
 with col_map:
     st.markdown("**Mapping kolom (sesuaikan dengan header CSV kamu).**")
+    st.warning("Pastikan bahwa header untuk ketiga dataset (Train, Validation, Test) memiliki header yang sama persis.")
     col_sent1 = st.text_input("Nama header untuk sentence1", value="sentence1")
     col_sent2 = st.text_input("Nama header untuk sentence2", value="sentence2")
     col_label = st.text_input("Nama header untuk label", value="label")
@@ -204,7 +205,8 @@ if df_train is not None and train_valid:
         label_1 = int(vc.get(1, 0))
         pct_0 = round(label_0 / total * 100, 2) if total > 0 else 0.0
         pct_1 = round(label_1 / total * 100, 2) if total > 0 else 0.0
-        combined = (df[col_sent1].fillna("").astype(str) + " " + df[col_sent2].fillna("").astype(str)).str.len()
+        # Calculate word count (not character count)
+        combined = (df[col_sent1].fillna("").astype(str) + " " + df[col_sent2].fillna("").astype(str)).str.split().str.len()
         qs = combined.quantile([0.25, 0.5, 0.75, 0.95, 1.0]).to_dict()
         qtable = {25: int(qs.get(0.25, 0)), 50: int(qs.get(0.5, 0)), 75: int(qs.get(0.75, 0)), 95: int(qs.get(0.95, 0)), 100: int(qs.get(1.0, 0))}
         max_len = qtable[95]
@@ -230,9 +232,9 @@ for col, name, summary, df in zip((c1, c2, c3), ("Train", "Validation", "Test"),
         st.write(f"{col_label} non-null: {summary['label_nonnull']}")
         st.write(f"Label distribution: 0 = {summary['label_0']} ({summary['pct_0']}%), 1 = {summary['label_1']} ({summary['pct_1']}%)")
         qt = summary["qtable"]
-        qdf = pd.DataFrame({"percentile": ["P25","P50","P75","P95","P100"], "chars": [qt[25], qt[50], qt[75], qt[95], qt[100]]})
+        qdf = pd.DataFrame({"percentile": ["P25","P50","P75","P95","P100"], "words": [qt[25], qt[50], qt[75], qt[95], qt[100]]})
         st.table(qdf)
-        st.write(f"Max len (use P95): {summary['max_len']}")
+        st.write(f"Max words (use P95): {summary['max_len']}")
         st.markdown("</div>", unsafe_allow_html=True)
         st.write("Sample rows:")
         st.dataframe(df[[col_sent1, col_sent2, col_label]].head(5), width='stretch')

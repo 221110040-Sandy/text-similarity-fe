@@ -296,9 +296,9 @@ def predict_document_api(doc1: str, doc2: str):
             data = resp.json()
             analysis = data.get("analysis", {})
             return {
-                "similarity": analysis.get("similarity_score"),
-                "label": analysis.get("similarity_label", ""),
-                "processing_time": data.get("processing_time", 0)
+                "similarity": analysis.get("similarity_score") or 0,
+                "label": analysis.get("similarity_label") or "Unknown",
+                "processing_time": data.get("processing_time") or 0
             }
         else:
             det = resp.json().get("detail", f"HTTP {resp.status_code}")
@@ -796,9 +796,9 @@ elif analysis_type == "📁 Document Similarity":
                 if "error" in result:
                     st.error(f"{result['error']}")
                 else:
-                    similarity = result["similarity"]
-                    label = result["label"]
-                    processing_time = result["processing_time"]
+                    similarity = result["similarity"] or 0
+                    label = result["label"] or "Unknown"
+                    processing_time = result["processing_time"] or 0
                     st.markdown("---")
                     st.markdown("<h2 style='text-align: center;'>Hasil Analisis Dokumen</h2>", unsafe_allow_html=True)
                     
