@@ -470,7 +470,7 @@ if st.session_state.job_started:
 
         logs_list = s.get("logs", [])
         is_retraining = any("Retraining Final Model" in log for log in logs_list)
-        if is_retraining and status_text not in ["COMPLETED", "FAILED", "FULL TRAIN", "ERROR"]:
+        if is_retraining and status_text not in ["COMPLETED", "FAILED", "ERROR"]:
             st.markdown("---")
             st.markdown("""
             <style>
@@ -515,6 +515,7 @@ if st.session_state.job_started:
         if status_text in ["COMPLETED", "FAILED", "ERROR"]:
             st.session_state.job_running = False
             st.session_state.job_started = False
+            st.rerun() 
 
             if status_text == "COMPLETED":
                 st.success("Training completed 🎉")
