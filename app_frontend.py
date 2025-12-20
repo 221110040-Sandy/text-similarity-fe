@@ -308,11 +308,14 @@ def predict_document_api(doc1: str, doc2: str):
     except requests.exceptions.RequestException as e:
         return {"error": f"Connection error: {str(e)}"}
 
-def switch_model_api(target: str):
+def switch_model_api(target: str, model_filename: Optional[str] = None):
     try:
+        params = {"target": target}
+        if model_filename:
+            params["model_filename"] = model_filename
         resp = requests.post(
             f"{API_BASE_URL}/switch-model",
-            params={"target": target},
+            params=params,
             timeout=1200
         )
         if resp.status_code == 200:
@@ -417,6 +420,15 @@ st.sidebar.markdown("---")
 if 'selected_model' not in st.session_state:
     st.session_state.selected_model = 'manual'
 
+@st.cache_data(ttl=60)
+def get_available_models():
+    try:
+        resp = requests.get(f"{API_BASE_URL}/list-models", timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as e:
+        return None
+
 # Show current model
 with st.sidebar:
     current_model_display = "Base Model" if st.session_state.selected_model == 'manual' else "Retrain Model"
@@ -425,22 +437,43 @@ with st.sidebar:
 if is_logged_in():
     with st.sidebar:
         st.markdown("### 🔄 Switch Model")
-        model_option = st.selectbox(
-            "Select model:",
-            ["manual", "colab"],
-            index=0 if st.session_state.selected_model == 'manual' else 1,
-            format_func=lambda x: "Base Model (manual)" if x == "manual" else "Retrain Model (colab)",
-            key="model_selector"
-        )
         
-        if st.button("Switch Model", width='stretch', type="secondary"):
-            with st.spinner(f"Switching to {model_option} model..."):
-                result = switch_model_api(model_option)
-                if result.get("success"):
-                    st.session_state.selected_model = model_option
-                    st.success(f"✅ Model switched to {model_option}")
-                else:
-                    st.error(f"❌ {result.get('error', 'Failed to switch model')}")
+        models_data = get_available_models()
+        
+        if models_data:
+            colab_models = models_data.get("available_colab_models", [])
+            
+            if colab_models:
+                model_option = st.selectbox(
+                    "Select model:",
+                    options=["manual"] + colab_models,
+                    format_func=lambda x: "Base Model (manual)" if x == "manual" else f"Retrain: {x}",
+                    index=0 if st.session_state.selected_model == 'manual' else min(1, len(colab_models) + 1),
+                    key="model_selector"
+                )
+                
+                if st.button("Switch Model", width='stretch', type="secondary"):
+                    with st.spinner(f"Switching to model..."):
+                        if model_option == "manual":
+                            result = switch_model_api("manual")
+                        else:
+                            result = switch_model_api("colab", model_option)
+                        
+                        if result.get("success"):
+                            st.session_state.selected_model = model_option
+                            st.cache_data.clear()
+                            st.success(f"✅ Model switched")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ {result.get('error', 'Failed to switch')}")
+            else:
+                # No colab models, fallback ke manual only
+                st.info("Only base model available")
+                if st.button("Use Base Model", width='stretch', type="secondary"):
+                    st.session_state.selected_model = 'manual'
+                    st.success("✅ Using base model")
+        else:
+            st.warning("Could not fetch models")
 
 st.sidebar.markdown("---")
 
