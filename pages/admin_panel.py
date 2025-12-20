@@ -21,7 +21,7 @@ def get_tokenizer():
 sys.path.append(str(Path(__file__).parent.parent))
 from utils.auth import initialize_auth_state, require_auth, logout
 
-def read_csv_strip_quotes(uploaded_file):
+def read_csv_strip_quotes(uploaded_file, delimiter=None):
     raw = uploaded_file.getvalue()
     try:
         text = raw.decode("utf-8-sig")
@@ -36,21 +36,34 @@ def read_csv_strip_quotes(uploaded_file):
         s = s.replace('""', '"')
         fixed.append(s)
     fixed_text = "\n".join(fixed)
-    return pd.read_csv(StringIO(fixed_text))
+    if delimiter:
+        return pd.read_csv(StringIO(fixed_text), sep=delimiter)
+    else:
+        return pd.read_csv(StringIO(fixed_text), sep=None, engine='python')
 
 def safe_read_csv(uploaded_file, required_cols):
     if uploaded_file is None:
         return None, False, None
     df = None
-    try:
-        df = pd.read_csv(uploaded_file)
-        if df.shape[1] == 1:
-            raise ValueError("single column")
-    except Exception:
+    for delimiter in [None, ',', ';']:
         try:
+            uploaded_file.seek(0)
+            if delimiter:
+                df = pd.read_csv(uploaded_file, sep=delimiter)
+            else:
+                df = pd.read_csv(uploaded_file, sep=None, engine='python')
+            if df.shape[1] > 1:
+                break
+        except Exception:
+            continue
+    
+    if df is None or df.shape[1] == 1:
+        try:
+            uploaded_file.seek(0)
             df = read_csv_strip_quotes(uploaded_file)
         except Exception:
             return None, False, "Cannot read CSV (format/encoding not recognized)."
+    
     cols = list(df.columns)
     missing = [c for c in required_cols if c not in cols]
     if missing:
@@ -331,7 +344,7 @@ with hb_col3:
 with hb_col4:
     max_trials = st.number_input("Max trials (Hyperband)", min_value=1, value=5, step=1)
 with hb_col5:
-    pruner_factor = st.number_input("Pruner factor", min_value=1, value=1, step=1)
+    pruner_factor = st.number_input("Pruner factor", min_value=2, value=2, step=1)
 
 st.markdown("---")
 
@@ -366,10 +379,14 @@ if disabled:
 URL = os.getenv("API_BASE_URL", "https://desertlike-nonrecognized-keagan.ngrok-free.dev")
 API_URL = URL + "/find-hyperparam"
 API_TIMEOUT = 60
+
+# Check if job is actually running (not in terminal states)
+actual_running = st.session_state.job_running and st.session_state.last_status is not None and st.session_state.last_status.get("status") not in ["COMPLETED", "FAILED", "ERROR"]
+
 if st.button(
     "Start Training",
     type="primary",
-    disabled=disabled or st.session_state.job_running
+    disabled=disabled or actual_running
 ):
     st.session_state.job_running = True
     with st.spinner("Sending configuration and files to backend..."):
@@ -453,7 +470,7 @@ if st.session_state.job_started:
 
         logs_list = s.get("logs", [])
         is_retraining = any("Retraining Final Model" in log for log in logs_list)
-        if is_retraining and status_text not in ["COMPLETED", "FAILED", "FULL TRAIN"]:
+        if is_retraining and status_text not in ["COMPLETED", "FAILED", "FULL TRAIN", "ERROR"]:
             st.markdown("---")
             st.markdown("""
             <style>
@@ -494,16 +511,18 @@ if st.session_state.job_started:
         for log in s.get("logs", [])[::-1]:
             st.code(log)
 
-        if status_text in ["COMPLETED", "FAILED"]:
+        # Terminal states: stop refreshing and reset job state
+        if status_text in ["COMPLETED", "FAILED", "ERROR"]:
             st.session_state.job_running = False
             st.session_state.job_started = False
 
             if status_text == "COMPLETED":
                 st.success("Training completed 🎉")
-                st.json(s.get("result"))
+            elif status_text == "ERROR":
+                st.error("Training encountered an error ❌")
             else:
                 st.error("Training failed")
-                st.json(s.get("result"))
         else:
+            # Still running, keep refreshing
             time.sleep(5)
             st.rerun()
