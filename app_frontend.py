@@ -429,13 +429,11 @@ def get_available_models():
     except Exception as e:
         return None
 
-# Show current model
-with st.sidebar:
-    current_model_display = "Base Model" if st.session_state.selected_model == 'manual' else "Retrain Model"
-    st.markdown(f"**Current Model:** {current_model_display}")
-
 if is_logged_in():
     with st.sidebar:
+        current_model_display = "Base Model" if st.session_state.selected_model == 'manual' else "Retrain Model"
+        st.markdown(f"**Current Model:** {current_model_display}")
+        
         st.markdown("### 🔄 Switch Model")
         
         models_data = get_available_models()
