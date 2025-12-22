@@ -379,6 +379,15 @@ full_training_epochs = 10
 if full_training == "Yes":
     full_training_epochs = st.number_input("Full training epochs", min_value=1, value=10, step=1)
 
+st.markdown("---")
+
+st.markdown("### Model Configuration")
+model_name = st.text_input(
+    "Model Name *",
+    placeholder="e.g., my_model_v1",
+    help="Required. This name will be used to save and identify your trained model."
+)
+
 any_uploaded = all([train_file is not None, val_file is not None])
 all_uploaded_valid = all([train_valid, val_valid]) and (not test_file or test_valid)
 
@@ -390,11 +399,14 @@ if not any_uploaded:
 if not all_uploaded_valid:
     disabled = True
     reasons.append("Train/Validation/Test not valid (check message in each column)")
+if not model_name or not model_name.strip():
+    disabled = True
+    reasons.append("Model Name is required")
 
 if disabled:
     st.info("Cannot start process: " + "; ".join(reasons))
 URL = os.getenv("API_BASE_URL", "https://desertlike-nonrecognized-keagan.ngrok-free.dev")
-API_URL = URL + "/find-hyperparam"
+API_URL = URL + "/retrain-model"
 API_TIMEOUT = 60
 
 # Check if job is actually running (not in terminal states)
@@ -416,6 +428,7 @@ if st.button(
             files["dataset_test"] = (test_file.name, test_file.getvalue(), "text/csv")
 
         data = {
+            "model_name": model_name.strip(),
             "header_col1": col_sent1,
             "header_col2": col_sent2,
             "header_label": col_label,
