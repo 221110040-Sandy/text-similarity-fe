@@ -284,8 +284,25 @@ with col_maxlen:
             f"P99 ({qt[99]} tokens)": qt[99],
             f"P100 ({qt[100]} tokens)": qt[100],
         }
-        selected_maxlen = st.radio("Max sequence length", options=list(maxlen_options.keys()), index=3)  # Default to P95
-        maxlen_value = maxlen_options[selected_maxlen]
+        options_with_custom = list(maxlen_options.keys()) + ["Custom"]
+        selected_maxlen = st.radio(
+            "Max sequence length",
+            options=options_with_custom,
+            index=3 
+        )
+        if selected_maxlen == "Custom":
+            default_custom = int(train_summary.get("max_len", 128))
+            custom_maxlen = st.number_input(
+                "Custom max sequence length",
+                min_value=8,
+                max_value=32768,
+                value=default_custom,
+                step=1,
+                key="custom_maxlen"
+            )
+            maxlen_value = int(custom_maxlen)
+        else:
+            maxlen_value = maxlen_options[selected_maxlen]
     else:
         st.warning("Upload Train CSV to see maxlen options")
         maxlen_value = 128  # Default fallback
@@ -511,11 +528,8 @@ if st.session_state.job_started:
         for log in s.get("logs", [])[::-1]:
             st.code(log)
 
-        # Terminal states: stop refreshing and reset job state
         if status_text in ["COMPLETED", "FAILED", "ERROR"]:
             st.session_state.job_running = False
-            st.session_state.job_started = False
-            st.rerun() 
 
             if status_text == "COMPLETED":
                 st.success("Training completed 🎉")
@@ -523,6 +537,12 @@ if st.session_state.job_started:
                 st.error("Training encountered an error ❌")
             else:
                 st.error("Training failed")
+            
+            st.markdown("---")
+            if st.button("Clear & Retry", key="clear_retry"):
+                st.session_state.job_started = False
+                st.session_state.last_status = None
+                st.rerun()
         else:
             # Still running, keep refreshing
             time.sleep(5)
