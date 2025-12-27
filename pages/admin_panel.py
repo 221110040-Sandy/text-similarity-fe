@@ -361,7 +361,7 @@ with hb_col3:
 with hb_col4:
     max_trials = st.number_input("Max trials (Hyperband)", min_value=1, value=5, step=1)
 with hb_col5:
-    pruner_factor = st.number_input("Pruner factor", min_value=2, value=2, step=1)
+    pruner_factor = st.number_input("Pruner factor (Hyperband)", min_value=2, value=2, step=1)
 
 st.markdown("---")
 

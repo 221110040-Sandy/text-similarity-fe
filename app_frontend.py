@@ -1,3 +1,4 @@
+from unittest.mock import Base
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
@@ -153,13 +154,12 @@ def estimate_pages(text, words_per_page=250):
     import math
     return math.ceil(count_words(text) / words_per_page)
 
-def validate_document_length(text, max_pages=5):
-    estimated_pages = estimate_pages(text)
+def validate_document_length(text, max_words=1000):
     word_count = count_words(text)
-    if estimated_pages > max_pages:
-        return False, f"Document too long! ({estimated_pages} pages, {word_count} words). Maximum {max_pages} pages (~{max_pages * 250} words)."
+    if word_count > max_words:
+        return False, f"Document too long! ({word_count} words). Maximum {max_words} words."
     else:
-        return True, f"Document valid ({estimated_pages} pages, {word_count} words)"
+        return True, f"Document valid ({word_count} words)"
 
 def get_text_statistics(text):
     word_count = count_words(text)
@@ -403,13 +403,14 @@ with st.sidebar:
     with c1:
         st.image("images/model.png", width=24)
     with c2:
-        st.markdown("Neural Model")
+        st.markdown("Base Model")
 
 st.sidebar.markdown(
     """
     <div style="margin:0; line-height:1.2">
-      <strong>Embedding:</strong> Bert Base Uncased<br>
-      <strong>Single Encoder:</strong> BiLSTM + Attention + MLP
+      <strong>Embedding:</strong> BERT-Based-Uncased<br>
+      <strong>Neural Model:</strong> BiLSTM + Attention<br>
+      <strong>Dataset:</strong> Quora Question Pairs
     </div>
     """,
     unsafe_allow_html=True
@@ -500,13 +501,8 @@ if analysis_type == "📄 Text Similarity":
                 st.error(f"Text too long: {word_count1} words (max 30 words)")
                 st.session_state.text1_valid = False
             else:
-                is_valid1, msg1 = validate_document_length(text1)
-                if is_valid1:
-                    st.success(f"{msg1} ({word_count1} words)")
-                    st.session_state.text1_valid = True
-                else:
-                    st.error(msg1)
-                    st.session_state.text1_valid = False
+                st.success(f"Text valid, {word_count1} words")
+                st.session_state.text1_valid = True
         else:
             st.session_state.text1_valid = False
     with col2:
@@ -522,13 +518,8 @@ if analysis_type == "📄 Text Similarity":
                 st.error(f"Text too long: {word_count2} words (max 30 words)")
                 st.session_state.text2_valid = False
             else:
-                is_valid2, msg2 = validate_document_length(text2)
-                if is_valid2:
-                    st.success(f"{msg2} ({word_count2} words)")
-                    st.session_state.text2_valid = True
-                else:
-                    st.error(msg2)
-                    st.session_state.text2_valid = False
+                st.success(f"Text valid, {word_count2} words")
+                st.session_state.text2_valid = True
         else:
             st.session_state.text2_valid = False
     both_texts_valid = st.session_state.get('text1_valid', False) and st.session_state.get('text2_valid', False)
@@ -621,9 +612,9 @@ elif analysis_type == "📁 Document Similarity":
     supported_formats.append("TXT")
     if not PDF_SUPPORT and not DOCX_SUPPORT:
         st.warning("**PDF & DOCX support not available.** Install PyPDF2, pdfplumber, and python-docx for full support.")
-        st.info("Upload exactly 2 TXT documents to compare (max 5 pages per document)")
+        st.info("Upload exactly 2 TXT documents to compare (max 1000 words per document)")
     else:
-        st.info(f"Upload exactly 2 documents ({', '.join(supported_formats)}) to compare (max 5 pages per document)")
+        st.info(f"Upload exactly 2 documents ({', '.join(supported_formats)}) to compare (max 1000 words per document)")
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("### 📄 Document 1")
