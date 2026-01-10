@@ -483,7 +483,12 @@ with st.sidebar:
     else:
         if st.button("Login Admin", key="admin_sidebar_guest", width='stretch'):
             st.switch_page("pages/admin_panel.py")
-    st.session_state.performance_history = []
+
+# Initialize history in session state
+if 'text_similarity_history' not in st.session_state:
+    st.session_state.text_similarity_history = []
+if 'doc_similarity_history' not in st.session_state:
+    st.session_state.doc_similarity_history = []
 
 if analysis_type == "📄 Text Similarity":
     st.markdown("## Text Similarity Analysis")
@@ -552,11 +557,18 @@ if analysis_type == "📄 Text Similarity":
                     similarity = result['similarity']
                     label = result['label']
                     processing_time = result['processing_time']
-                    st.session_state.performance_history.append({
+                    # Add to history
+                    import datetime
+                    st.session_state.text_similarity_history.insert(0, {
+                        'text1_preview': text1[:50] + '...' if len(text1) > 50 else text1,
+                        'text2_preview': text2[:50] + '...' if len(text2) > 50 else text2,
                         'similarity': similarity,
                         'label': label,
-                        'processing_time': processing_time
+                        'processing_time': processing_time,
+                        'timestamp': datetime.datetime.now().strftime('%H:%M:%S')
                     })
+                    # Keep only last 10 entries
+                    st.session_state.text_similarity_history = st.session_state.text_similarity_history[:10]
                     st.markdown("---")
                     st.markdown("<h2 style='text-align: center;'>Similarity Analysis Results</h2>", unsafe_allow_html=True)
                     
@@ -601,6 +613,26 @@ if analysis_type == "📄 Text Similarity":
                     st.markdown("<br>", unsafe_allow_html=True)
                     gauge_fig = create_similarity_gauge(similarity, label)
                     st.plotly_chart(gauge_fig, use_container_width=True)
+    
+    # Show Text Similarity History
+    if st.session_state.text_similarity_history:
+        st.markdown("---")
+        st.markdown("### 📜 Analysis History")
+        
+        
+        for i, entry in enumerate(st.session_state.text_similarity_history):
+            similarity_color = "#28a745" if entry['similarity'] < 0.6 else "#ffc107" if entry['similarity'] < 0.8 else "#dc3545"
+            with st.expander(f"🕐 {entry['timestamp']} | Score: {entry['similarity']:.4f} | {entry['label']}", expanded=(i==0)):
+                col_h1, col_h2 = st.columns(2)
+                with col_h1:
+                    st.markdown(f"**Text 1:** {entry['text1_preview']}")
+                with col_h2:
+                    st.markdown(f"**Text 2:** {entry['text2_preview']}")
+                st.markdown(f"⏱️ Processing time: **{entry['processing_time']:.2f}s**")
+        
+        if st.button("🗑️ Clear History", key="clear_text_history"):
+            st.session_state.text_similarity_history = []
+            st.rerun()
 
 elif analysis_type == "📁 Document Similarity":
     st.markdown("## Document Similarity Analysis")
@@ -870,5 +902,35 @@ elif analysis_type == "📁 Document Similarity":
                     st.markdown("<br>", unsafe_allow_html=True)
                     gauge_fig = create_similarity_gauge(similarity, label)
                     st.plotly_chart(gauge_fig, use_container_width=True)
+                    
+                    # Add to document history
+                    import datetime
+                    st.session_state.doc_similarity_history.insert(0, {
+                        'doc1_name': uploaded_file1.name if uploaded_file1 else 'Unknown',
+                        'doc2_name': uploaded_file2.name if uploaded_file2 else 'Unknown',
+                        'similarity': similarity,
+                        'label': label,
+                        'processing_time': processing_time,
+                        'timestamp': datetime.datetime.now().strftime('%H:%M:%S')
+                    })
+                    # Keep only last 10 entries
+                    st.session_state.doc_similarity_history = st.session_state.doc_similarity_history[:10]
+    
+    # Show Document Similarity History
+    if st.session_state.doc_similarity_history:
+        st.markdown("---")
+        st.markdown("### 📜 Analysis History")
+        
+        
+        for i, entry in enumerate(st.session_state.doc_similarity_history):
+            similarity_color = "#28a745" if entry['similarity'] < 0.6 else "#ffc107" if entry['similarity'] < 0.8 else "#dc3545"
+            with st.expander(f"🕐 {entry['timestamp']} | Score: {entry['similarity']:.4f} | {entry['label']}", expanded=(i==0)):
+                st.markdown(f"**Document 1:** {entry['doc1_name']}")
+                st.markdown(f"**Document 2:** {entry['doc2_name']}")
+                st.markdown(f"⏱️ Processing time: **{entry['processing_time']:.2f}s**")
+        
+        if st.button("🗑️ Clear History", key="clear_doc_history"):
+            st.session_state.doc_similarity_history = []
+            st.rerun()
 
 st.markdown("---")
