@@ -113,7 +113,7 @@ st.markdown("### Upload CSV (Train / Val / Test)")
 col_map, _ = st.columns([2,1])
 with col_map:
     st.markdown("**Column mapping (adjust to your CSV headers).**")
-    st.warning("Make sure all three datasets (Train, Validation, Test) have the exact same headers.")
+    st.warning("Make sure all three datasets (Train, Validation, Test) have the exact same headers. This retraining feature is only suitable for binary (0/1) text similarity datasets, where labels indicate whether a pair of texts is duplicate (1) or not duplicate (0).")
     col_sent1 = st.text_input("Header name for sentence1", value="sentence1")
     col_sent2 = st.text_input("Header name for sentence2", value="sentence2")
     col_label = st.text_input("Header name for label", value="label")
@@ -145,7 +145,7 @@ with col_train:
     train_err = None
     if train_file:
         if train_file.size > MAX_UPLOAD_BYTES:
-            st.error("File too large — maximum 25 MB")
+            st.error("File too large - maximum 25 MB")
             train_file = None
             train_valid = False
         else:
@@ -155,7 +155,7 @@ with col_train:
             if df_train is not None and train_valid:
                 st.metric("Rows", len(df_train))
                 st.metric("Columns", len(df_train.columns))
-                st.success("Document valid — all columns found")
+                st.success("Document valid - all columns found")
             elif df_train is not None and not train_valid:
                 st.error("Required columns missing or headers mismatch: " + ", ".join([c for c in required_cols if c not in list(df_train.columns)]))
     else:
@@ -168,7 +168,7 @@ with col_val:
     val_err = None
     if val_file:
         if val_file.size > MAX_UPLOAD_BYTES:
-            st.error("File too large — maximum 25 MB")
+            st.error("File too large - maximum 25 MB")
             val_file = None
             val_valid = False
         else:
@@ -178,7 +178,7 @@ with col_val:
             if df_val is not None and val_valid:
                 st.metric("Rows", len(df_val))
                 st.metric("Columns", len(df_val.columns))
-                st.success("Document valid — all columns found")
+                st.success("Document valid - all columns found")
             elif df_val is not None and not val_valid:
                 st.error("Required columns missing or headers mismatch: " + ", ".join([c for c in required_cols if c not in list(df_val.columns)]))
     else:
@@ -191,7 +191,7 @@ with col_test:
     test_err = None
     if test_file:
         if test_file.size > MAX_UPLOAD_BYTES:
-            st.error("File too large — maximum 25 MB")
+            st.error("File too large - maximum 25 MB")
             test_file = None
             test_valid = False
         else:
@@ -201,11 +201,11 @@ with col_test:
             if df_test is not None and test_valid:
                 st.metric("Rows", len(df_test))
                 st.metric("Columns", len(df_test.columns))
-                st.success("Document valid — all columns found")
+                st.success("Document valid - all columns found")
             elif df_test is not None and not test_valid:
                 st.error("Required columns missing or headers mismatch: " + ", ".join([c for c in required_cols if c not in list(df_test.columns)]))
     else:
-        st.info("Test CSV empty — will be split from Train when process starts with 80:20 ratio")
+        st.info("Test CSV empty - will be split from Train when process starts with 80:20 ratio")
 
 st.markdown("---")
 
