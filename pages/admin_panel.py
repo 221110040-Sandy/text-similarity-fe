@@ -92,7 +92,7 @@ if "job_running" not in st.session_state:
 if "last_status" not in st.session_state:
     st.session_state.last_status = None
 
-st.markdown("<div class='admin-header'><h1>Admin Dashboard</h1></div>", unsafe_allow_html=True)
+st.markdown("<div class='admin-header'><h1>Retrain Model</h1></div>", unsafe_allow_html=True)
 
 col1, col2 = st.columns([1,1])
 with col1:

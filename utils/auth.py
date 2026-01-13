@@ -62,7 +62,7 @@ def show_login_form():
                 padding: 2rem; border-radius: 15px; margin: 2rem 0;'>
         <h2 style='color: white; text-align: center; margin-bottom: 1rem;'>Login Admin Panel</h2>
         <p style='color: rgba(255,255,255,0.9); text-align: center;'>
-            Please login to access the admin dashboard
+            Please login to access the Retrain Model Feature
         </p>
     </div>
     """, unsafe_allow_html=True)
