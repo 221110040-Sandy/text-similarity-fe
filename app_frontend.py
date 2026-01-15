@@ -432,7 +432,7 @@ def get_available_models():
 
 if is_logged_in():
     with st.sidebar:
-        current_model_display = "Base Model" if st.session_state.selected_model == 'manual' else "Retrain Model"
+        current_model_display = "Base Model" if st.session_state.selected_model == 'manual' else st.session_state.selected_model
         st.markdown(f"**Current Model:** {current_model_display}")
         
         st.markdown("### 🔄 Switch Model")
