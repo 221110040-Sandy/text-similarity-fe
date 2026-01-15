@@ -319,7 +319,9 @@ def switch_model_api(target: str, model_filename: Optional[str] = None):
             timeout=1200
         )
         if resp.status_code == 200:
-            return {"success": True, "message": f"Model switched to {target}"}
+            data = resp.json()
+            max_len_used = data.get("max_len_used", None)
+            return {"success": True, "message": f"Model switched to {target}", "max_len_used": max_len_used}
         else:
             det = resp.json().get("detail", f"HTTP {resp.status_code}")
             return {"success": False, "error": f"API Error: {det}"}
@@ -420,6 +422,19 @@ st.sidebar.markdown("---")
 
 if 'selected_model' not in st.session_state:
     st.session_state.selected_model = 'manual'
+if 'model_max_len' not in st.session_state:
+    st.session_state.model_max_len = None
+
+import math
+def calculate_max_words(is_base_model, max_len_used=None):
+    """Calculate max words allowed based on model type"""
+    if is_base_model:
+        return 30
+    elif max_len_used:
+        # Formula: (max_len_used / 2) - 3, rounded up
+        return math.ceil((max_len_used / 2) - 3)
+    else:
+        return 30  # fallback
 
 @st.cache_data(ttl=60)
 def get_available_models():
@@ -460,6 +475,7 @@ if is_logged_in():
                         
                         if result.get("success"):
                             st.session_state.selected_model = model_option
+                            st.session_state.model_max_len = result.get("max_len_used", None)
                             st.cache_data.clear()
                             st.success(f"✅ Model switched")
                             st.rerun()
@@ -492,18 +508,23 @@ if 'doc_similarity_history' not in st.session_state:
 
 if analysis_type == "📄 Text Similarity":
     st.markdown("## Text Similarity Analysis")
+    
+    # Calculate max words for current model
+    is_base_model = st.session_state.selected_model == 'manual'
+    max_words = calculate_max_words(is_base_model, st.session_state.model_max_len)
+    
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("### 📝 Text 1")
-        text1 = st.text_area("Enter first text (max 30 words):", height=200, key="text1", 
+        text1 = st.text_area(f"Enter first text (max {max_words} words):", height=200, key="text1", 
                             placeholder="Paste or type first text here...")
         if text1:
             word_count1 = len(text1.split())
             if word_count1 == 0:
                 st.error("Text cannot be empty")
                 st.session_state.text1_valid = False
-            elif word_count1 > 30:
-                st.error(f"Text too long: {word_count1} words (max 30 words)")
+            elif word_count1 > max_words:
+                st.error(f"Text too long: {word_count1} words (max {max_words} words)")
                 st.session_state.text1_valid = False
             else:
                 st.success(f"Text valid, {word_count1} words")
@@ -512,15 +533,15 @@ if analysis_type == "📄 Text Similarity":
             st.session_state.text1_valid = False
     with col2:
         st.markdown("### 📝 Text 2")
-        text2 = st.text_area("Enter second text (max 30 words):", height=200, key="text2",
+        text2 = st.text_area(f"Enter second text (max {max_words} words):", height=200, key="text2",
                             placeholder="Paste or type second text here...")
         if text2:
             word_count2 = len(text2.split())
             if word_count2 == 0:
                 st.error("Text cannot be empty")
                 st.session_state.text2_valid = False
-            elif word_count2 > 30:
-                st.error(f"Text too long: {word_count2} words (max 30 words)")
+            elif word_count2 > max_words:
+                st.error(f"Text too long: {word_count2} words (max {max_words} words)")
                 st.session_state.text2_valid = False
             else:
                 st.success(f"Text valid, {word_count2} words")
@@ -531,7 +552,7 @@ if analysis_type == "📄 Text Similarity":
     text_button_disabled = not both_texts_valid
     if not both_texts_valid:
         if not st.session_state.get('text1_valid', False) and not st.session_state.get('text2_valid', False):
-            st.info("Enter both valid texts to start analysis (max 30 words per text)")
+            st.info(f"Enter both valid texts to start analysis (max {max_words} words per text)")
         elif not st.session_state.get('text1_valid', False):
             st.warning("Text 1 is not valid or empty")
         elif not st.session_state.get('text2_valid', False):
