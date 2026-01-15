@@ -491,41 +491,41 @@ if st.session_state.job_started:
         if total > 0:
             st.progress(min(cur / total, 1.0))
             st.write(f"Trial {cur} / {total}")
-
-            st.markdown("""
-            <style>
-            .spinner-container {
-                display: flex;
-                align-items: center;
-                gap: 15px;
-                padding: 20px;
-                background: rgba(255, 255, 255, 0.05);
-                border-radius: 10px;
-                margin: 10px 0;
-            }
-            .spinner {
-                width: 40px;
-                height: 40px;
-                border: 4px solid rgba(102, 126, 234, 0.3);
-                border-top: 4px solid #667eea;
-                border-radius: 50%;
-                animation: spin 1s linear infinite;
-            }
-            @keyframes spin {
-                0% { transform: rotate(0deg); }
-                100% { transform: rotate(360deg); }
-            }
-            .spinner-text {
-                font-size: 18px;
-                font-weight: 600;
-                color: #667eea;
-            }
-            </style>
-            <div class="spinner-container">
-                <div class="spinner"></div>
-                <span class="spinner-text">Training Hyperband Model...</span>
-            </div>
-            """, unsafe_allow_html=True)
+            if cur < total:
+                st.markdown("""
+                <style>
+                .spinner-container {
+                    display: flex;
+                    align-items: center;
+                    gap: 15px;
+                    padding: 20px;
+                    background: rgba(255, 255, 255, 0.05);
+                    border-radius: 10px;
+                    margin: 10px 0;
+                }
+                .spinner {
+                    width: 40px;
+                    height: 40px;
+                    border: 4px solid rgba(102, 126, 234, 0.3);
+                    border-top: 4px solid #667eea;
+                    border-radius: 50%;
+                    animation: spin 1s linear infinite;
+                }
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+                .spinner-text {
+                    font-size: 18px;
+                    font-weight: 600;
+                    color: #667eea;
+                }
+                </style>
+                <div class="spinner-container">
+                    <div class="spinner"></div>
+                    <span class="spinner-text">Training Hyperband Model...</span>
+                </div>
+                """, unsafe_allow_html=True)
         else:
             st.progress(0.0)
             st.write(f"Trial {cur} (total trials not yet determined)")
