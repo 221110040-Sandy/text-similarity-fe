@@ -255,7 +255,6 @@ for col, name, summary, df in zip((c1, c2, c3), ("Train", "Validation", "Test"),
         qt = summary["qtable"]
         qdf = pd.DataFrame({"percentile": ["P25","P50","P75","P95","P96","P97","P98","P99","P100"], "tokens": [qt[25], qt[50], qt[75], qt[95], qt[96], qt[97], qt[98], qt[99], qt[100]]})
         st.table(qdf)
-        st.write(f"Max tokens (use P95): {summary['max_len']}")
         st.markdown("</div>", unsafe_allow_html=True)
         st.write("Sample rows:")
         st.dataframe(df[[col_sent1, col_sent2, col_label]].head(5), width='stretch')
@@ -312,10 +311,10 @@ st.markdown("### Hyperband Configuration")
 col_bilstm, col_attn, col_dense, col_lr, col_drop, col_wd = st.columns(6)
 
 with col_bilstm:
-    bilstm_count = st.number_input("Number of BiLSTM values", min_value=1, max_value=20, value=3, step=1, key="bilstm_count")
+    bilstm_count = st.number_input("Number of LSTM values", min_value=1, max_value=20, value=3, step=1, key="bilstm_count")
     bilstm_values = []
     for i in range(bilstm_count):
-        v = st.number_input(f"BiLSTM value {i+1}", min_value=1, max_value=16384, value=64*(i+1), step=1, key=f"bilstm_v_{i}")
+        v = st.number_input(f"LSTM value {i+1}", min_value=1, max_value=16384, value=64*(i+1), step=1, key=f"bilstm_v_{i}")
         bilstm_values.append(int(v))
 
 with col_attn:
@@ -373,6 +372,7 @@ samp_test_pct = st.slider("Sampling percentage from test (%)", min_value=1, max_
 st.markdown("---")
 
 st.markdown("### After Hyperband")
+st.info("If yes, Retrain the model from scratch using the best Hyperband configuration on the full dataset (training, validation, and testing data). If no, Use the best-performing model checkpoint obtained during Hyperband directly as the final model.")
 full_training = st.radio("Perform full training after Hyperband?", options=["Yes","No"], index=1)
 
 full_training_epochs = 10 
