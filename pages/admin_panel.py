@@ -372,7 +372,8 @@ samp_test_pct = st.slider("Sampling percentage from test (%)", min_value=1, max_
 st.markdown("---")
 
 st.markdown("### After Hyperband")
-st.info("If yes, Retrain the model from scratch using the best Hyperband configuration on the full dataset (training, validation, and testing data). If no, Use the best-performing model checkpoint obtained during Hyperband directly as the final model.")
+st.warning("If yes, Retrain the model from scratch using the best Hyperband configuration on the full dataset (training, validation, and testing data).")
+st.warning("If no, Use the best-performing model checkpoint obtained during Hyperband directly as the final model.")
 full_training = st.radio("Perform full training after Hyperband?", options=["Yes","No"], index=1)
 
 full_training_epochs = 10 
@@ -410,7 +411,7 @@ API_URL = URL + "/retrain-model"
 API_TIMEOUT = 60
 
 # Check if job is actually running (not in terminal states)
-actual_running = st.session_state.job_running and st.session_state.last_status is not None and st.session_state.last_status.get("status") not in ["COMPLETED", "FAILED", "ERROR"]
+actual_running = st.session_state.job_running and st.session_state.last_status is not None and st.session_state.last_status.get("status") not in ["COMPLETED", "FAILED", "ERROR", "STOPPED"]
 
 if st.button(
     "Start Training",
@@ -464,6 +465,7 @@ if st.button(
             st.error(f"Error calling API: {e}")
 
 STATUS_URL = URL + "/status"
+STOP_URL = URL + "/stop-training"
 
 if st.session_state.job_started:
     try:
@@ -480,8 +482,27 @@ if st.session_state.job_started:
         is_running = status_text in ["TUNING", "TRAINING"]
 
         st.subheader("Training Status")
-        st.write(f"**Status:** {status_text}")
-        st.write(f"**Running:** {is_running}")
+        
+        # Show Stop Training button when job is running
+        if is_running:
+            col_status, col_stop = st.columns([3, 1])
+            with col_status:
+                st.write(f"**Status:** {status_text}")
+                st.write(f"**Running:** {is_running}")
+            with col_stop:
+                if st.button("🛑 Stop Training", type="secondary", key="stop_training"):
+                    with st.spinner("Stopping training..."):
+                        try:
+                            stop_resp = requests.post(STOP_URL, timeout=30)
+                            stop_resp.raise_for_status()
+                            st.warning("Stop signal sent. Training will stop shortly...")
+                            time.sleep(2)
+                            st.rerun()
+                        except requests.RequestException as e:
+                            st.error(f"Failed to stop training: {e}")
+        else:
+            st.write(f"**Status:** {status_text}")
+            st.write(f"**Running:** {is_running}")
 
         prog = s.get("progress", {})
         cur = prog.get("current_trial", 0)
@@ -491,53 +512,50 @@ if st.session_state.job_started:
         if total > 0:
             st.progress(min(cur / total, 1.0))
             st.write(f"Trial {cur} / {total}")
-            if cur < total:
-                st.markdown("""
-                <style>
-                .spinner-container {
-                    display: flex;
-                    align-items: center;
-                    gap: 15px;
-                    padding: 20px;
-                    background: rgba(255, 255, 255, 0.05);
-                    border-radius: 10px;
-                    margin: 10px 0;
-                }
-                .spinner {
-                    width: 40px;
-                    height: 40px;
-                    border: 4px solid rgba(102, 126, 234, 0.3);
-                    border-top: 4px solid #667eea;
-                    border-radius: 50%;
-                    animation: spin 1s linear infinite;
-                }
-                @keyframes spin {
-                    0% { transform: rotate(0deg); }
-                    100% { transform: rotate(360deg); }
-                }
-                .spinner-text {
-                    font-size: 18px;
-                    font-weight: 600;
-                    color: #667eea;
-                }
-                </style>
-                <div class="spinner-container">
-                    <div class="spinner"></div>
-                    <span class="spinner-text">Training Hyperband Model...</span>
-                </div>
-                """, unsafe_allow_html=True)
         else:
             st.progress(0.0)
             st.write(f"Trial {cur} (total trials not yet determined)")
 
-        if best is not None:
-            st.write(f"Best loss: `{best:.4f}`")
 
 
         logs_list = s.get("logs", [])
-        is_retraining = any("Retraining Final Model" in log for log in logs_list)
-        if is_retraining and status_text not in ["COMPLETED", "FAILED", "ERROR"]:
-            st.markdown("---")
+        is_retraining = any("FULL RETRAIN" in log for log in logs_list)
+        if not is_retraining and status_text not in ["COMPLETED", "FAILED", "ERROR", "STOPPED"]:
+            st.markdown("""
+            <style>
+            .spinner-container {
+                display: flex;
+                align-items: center;
+                gap: 15px;
+                padding: 20px;
+                background: rgba(255, 255, 255, 0.05);
+                border-radius: 10px;
+                margin: 10px 0;
+            }
+            .spinner {
+                width: 40px;
+                height: 40px;
+                border: 4px solid rgba(102, 126, 234, 0.3);
+                border-top: 4px solid #667eea;
+                border-radius: 50%;
+                animation: spin 1s linear infinite;
+            }
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+            .spinner-text {
+                font-size: 18px;
+                font-weight: 600;
+                color: #667eea;
+            }
+            </style>
+            <div class="spinner-container">
+                <div class="spinner"></div>
+                <span class="spinner-text">Training Hyperband Model...</span>
+            </div>
+            """, unsafe_allow_html=True)
+        if is_retraining and status_text not in ["COMPLETED", "FAILED", "ERROR", "STOPPED"]:
             st.markdown("""
             <style>
             .spinner-container {
@@ -577,11 +595,13 @@ if st.session_state.job_started:
         for log in s.get("logs", [])[::-1]:
             st.code(log)
 
-        if status_text in ["COMPLETED", "FAILED", "ERROR"]:
+        if status_text in ["COMPLETED", "FAILED", "ERROR", "STOPPED"]:
             st.session_state.job_running = False
 
             if status_text == "COMPLETED":
                 st.success("Training completed 🎉")
+            elif status_text == "STOPPED":
+                st.warning("Training was stopped by user ⏹️")
             elif status_text == "ERROR":
                 st.error("Training encountered an error ❌")
             else:

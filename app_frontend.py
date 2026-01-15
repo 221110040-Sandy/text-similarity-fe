@@ -420,11 +420,6 @@ st.sidebar.markdown(
 
 st.sidebar.markdown("---")
 
-if 'selected_model' not in st.session_state:
-    st.session_state.selected_model = 'manual'
-if 'model_max_len' not in st.session_state:
-    st.session_state.model_max_len = None
-
 import math
 def calculate_max_words(is_base_model, max_len_used=None):
     """Calculate max words allowed based on model type"""
@@ -445,6 +440,57 @@ def get_available_models():
     except Exception as e:
         return None
 
+def extract_model_name(path_or_filename):
+    """Extract model name from path, remove .keras extension"""
+    if not path_or_filename:
+        return None
+    # Get just the filename from path
+    filename = path_or_filename.split("/")[-1].split("\\")[-1]
+    # Remove .keras extension
+    if filename.endswith(".keras"):
+        filename = filename[:-6]
+    return filename
+
+def parse_active_model(active_now_obj):
+    """Parse active_now object from API response"""
+    if not active_now_obj or not isinstance(active_now_obj, dict):
+        return "manual", None
+    
+    model_type = active_now_obj.get("type", "manual")
+    max_len = active_now_obj.get("max_len", None)
+    
+    if model_type == "manual":
+        return "manual", max_len
+    else:
+        # Extract model name from path
+        path = active_now_obj.get("path", "")
+        model_name = extract_model_name(path)
+        return model_name if model_name else "manual", max_len
+
+# Initialize model state from API on first load
+if 'model_initialized' not in st.session_state:
+    st.session_state.model_initialized = False
+
+if not st.session_state.model_initialized:
+    # First load - fetch from API to get active_now
+    models_data = get_available_models()
+    if models_data:
+        active_now_obj = models_data.get("active_now", {})
+        selected_model, max_len = parse_active_model(active_now_obj)
+        st.session_state.selected_model = selected_model
+        st.session_state.model_max_len = max_len
+    else:
+        # Fallback if API fails
+        st.session_state.selected_model = 'manual'
+        st.session_state.model_max_len = None
+    st.session_state.model_initialized = True
+else:
+    # Ensure session state exists for subsequent loads
+    if 'selected_model' not in st.session_state:
+        st.session_state.selected_model = 'manual'
+    if 'model_max_len' not in st.session_state:
+        st.session_state.model_max_len = None
+
 if is_logged_in():
     with st.sidebar:
         current_model_display = "Base Model" if st.session_state.selected_model == 'manual' else st.session_state.selected_model
@@ -455,14 +501,25 @@ if is_logged_in():
         models_data = get_available_models()
         
         if models_data:
-            colab_models = models_data.get("available_colab_models", [])
+            # Get colab models and remove .keras extension for display
+            raw_colab_models = models_data.get("available_colab_models", [])
+            colab_models = [extract_model_name(m) for m in raw_colab_models]
+            # Map display name back to original filename for API call
+            model_filename_map = {extract_model_name(m): m for m in raw_colab_models}
             
             if colab_models:
+                # Calculate correct index based on current selected_model
+                all_options = ["manual"] + colab_models
+                try:
+                    current_index = all_options.index(st.session_state.selected_model)
+                except ValueError:
+                    current_index = 0  # fallback to manual if not found
+                
                 model_option = st.selectbox(
                     "Select model:",
-                    options=["manual"] + colab_models,
+                    options=all_options,
                     format_func=lambda x: "Base Model (manual)" if x == "manual" else f"Retrain: {x}",
-                    index=0 if st.session_state.selected_model == 'manual' else min(1, len(colab_models) + 1),
+                    index=current_index,
                     key="model_selector"
                 )
                 
@@ -471,7 +528,9 @@ if is_logged_in():
                         if model_option == "manual":
                             result = switch_model_api("manual")
                         else:
-                            result = switch_model_api("colab", model_option)
+                            # Get original filename with .keras for API
+                            original_filename = model_filename_map.get(model_option, model_option + ".keras")
+                            result = switch_model_api("colab", original_filename)
                         
                         if result.get("success"):
                             st.session_state.selected_model = model_option
